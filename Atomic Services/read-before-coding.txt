@@ -1,0 +1,104 @@
+── Atomic Services ──────────────────────────────────────
+Use kebab case for folder name (e.g. driver-location)
+
+── What atomic services do ──────────────────────────────
+- Handle a single piece of business logic (one responsibility)
+- Interact directly with the database or external APIs
+- Called by composite services via HTTP or triggered by RabbitMQ
+
+── Your routes and ports (from kong.yml) ────────────────
+Your endpoint paths and ports MUST match these exactly.
+
+Scenario 3:
+  driver-location        | port 8087 | POST, GET /api/v1/driver/location
+                                      | POST, GET /api/v1/driver/nearby
+
+External:
+  menu                   | OutSystems (hardcoded URL in kong.yml)
+
+Notification:
+  notification-service   | port 8090 | /api/notifications
+
+Note: atomic services that are only called internally (via RabbitMQ
+or by a composite service) do NOT need a Kong route. They still need
+a port if called via HTTP.
+
+── Flask example (driver-location on port 8087) ─────────
+
+  from flask import Flask, request, jsonify
+  import os
+
+  app = Flask(__name__)
+
+  @app.route("/api/v1/driver/location", methods=["POST"])
+  def update_location():
+      data = request.get_json()
+      # store location in database
+      return jsonify({"status": "location updated"}), 200
+
+  @app.route("/api/v1/driver/nearby", methods=["GET"])
+  def get_nearby_drivers():
+      # query database for nearby drivers
+      return jsonify({"drivers": []}), 200
+
+  if __name__ == "__main__":
+      app.run(host="0.0.0.0", port=8087)
+
+── FastAPI example (driver-location on port 8087) ───────
+
+  from fastapi import FastAPI
+  import uvicorn
+  import os
+
+  app = FastAPI()
+
+  @app.post("/api/v1/driver/location")
+  def update_location(data: dict):
+      # store location in database
+      return {"status": "location updated"}
+
+  @app.get("/api/v1/driver/nearby")
+  def get_nearby_drivers():
+      # query database for nearby drivers
+      return {"drivers": []}
+
+  if __name__ == "__main__":
+      uvicorn.run(app, host="0.0.0.0", port=8087)
+
+── Database and Redis ───────────────────────────────────
+- Use shared/database.py for Supabase/Postgres connections
+- Use shared/redis.py for Redis connections
+- Each service queries the tables it needs
+- Tables are created in Supabase, not in code
+
+── Listening to RabbitMQ (no HTTP needed) ───────────────
+If your service is triggered by a message instead of HTTP:
+
+  import pika, os
+
+  connection = pika.BlockingConnection(
+      pika.URLParameters(os.getenv("RABBITMQ_URL"))
+  )
+  channel = connection.channel()
+  channel.queue_declare(queue="your-queue")
+
+  def callback(ch, method, properties, body):
+      # handle the message
+      print(f"Received: {body}")
+
+  channel.basic_consume(queue="your-queue",
+                        on_message_callback=callback,
+                        auto_ack=True)
+  channel.start_consuming()
+
+── Adding to Docker ─────────────────────────────────────
+Add your service to docker-compose.yml under the correct scenario comment:
+
+  driver-location:
+    build: ../Atomic Services/driver-location
+    env_file: ../.env
+    ports:
+      - "8087:8087"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy

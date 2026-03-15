@@ -1,0 +1,72 @@
+── Composite Services ───────────────────────────────────
+Use kebab case for folder name (e.g. assign-driver)
+
+── What composite services do ───────────────────────────
+- Orchestrate multiple atomic services into a single workflow
+- Call atomic services via HTTP or publish to RabbitMQ
+- Do NOT contain core business logic — that belongs in atomic services
+
+── Your routes and ports (from kong.yml) ────────────────
+Your endpoint paths and ports MUST match these exactly.
+
+Scenario 1:
+  order-fulfilment       | port 8081 | POST /api/v1/order/submit
+
+Scenario 2:
+  assign-kitchen         | port 8083 | GET  /api/v1/kitchen/orders
+  order-fulfilment-coord | port 8084 | POST /api/v1/order/fulfil
+
+Scenario 3:
+  assign-driver          | port 8086 | GET, PUT /api/v1/driver/assign
+                                      | GET, PUT /api/v1/orders/available
+  eta-tracking           | port 8088 | GET, POST /api/v1/eta
+
+── Flask example (order-fulfilment on port 8081) ────────
+
+  from flask import Flask, request, jsonify
+  import os
+
+  app = Flask(__name__)
+
+  @app.route("/api/v1/order/submit", methods=["POST"])
+  def submit_order():
+      data = request.get_json()
+      # orchestrate atomic services here
+      return jsonify({"status": "order submitted"}), 201
+
+  if __name__ == "__main__":
+      app.run(host="0.0.0.0", port=8081)
+
+── FastAPI example (order-fulfilment on port 8081) ──────
+
+  from fastapi import FastAPI
+  import uvicorn
+  import os
+
+  app = FastAPI()
+
+  @app.post("/api/v1/order/submit")
+  def submit_order(data: dict):
+      # orchestrate atomic services here
+      return {"status": "order submitted"}
+
+  if __name__ == "__main__":
+      uvicorn.run(app, host="0.0.0.0", port=8081)
+
+── Calling other services ───────────────────────────────
+- Use the Docker service name as hostname:
+    requests.get("http://driver-location:8087/api/v1/driver/nearby")
+- For async, publish to RabbitMQ:
+    RabbitMQ URL: os.getenv("RABBITMQ_URL")
+
+── Adding to Docker ─────────────────────────────────────
+Add your service to docker-compose.yml under the correct scenario comment:
+
+  order-fulfilment:
+    build: ../Composite Services/order-fulfilment
+    env_file: ../.env
+    ports:
+      - "8081:8081"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
