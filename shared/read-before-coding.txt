@@ -1,0 +1,41 @@
+── Shared Utilities ─────────────────────────────────────
+database.py — Supabase connection helper
+redis.py    — Redis connection helper
+
+Import these in your microservice to use them.
+
+── Importing (only add what your service needs) ─────────
+
+  from shared.database import get_supabase
+  db = get_supabase()
+
+  from shared.redis import get_redis
+  r = get_redis()
+
+── Supabase (permanent data: orders, drivers, users) ───
+
+  # SELECT * FROM drivers WHERE status = 'available'
+  db.table("drivers").select("*").eq("status", "available").execute()
+
+  # INSERT
+  db.table("orders").insert({"item": "burger", "status": "pending"}).execute()
+
+  # UPDATE orders SET status = 'completed' WHERE id = 123
+  db.table("orders").update({"status": "completed"}).eq("id", 123).execute()
+
+  # DELETE FROM orders WHERE id = 123
+  db.table("orders").delete().eq("id", 123).execute()
+
+── Redis (temporary/fast data: caching, live locations) ─
+
+  # Store a value
+  r.set("driver:123:location", "1.35,103.82")
+
+  # Get a value
+  r.get("driver:123:location")
+
+  # Set with expiry (e.g. cache ETA for 60 seconds)
+  r.setex("eta:order:456", 60, "15 mins")
+
+  # Delete
+  r.delete("driver:123:location")
