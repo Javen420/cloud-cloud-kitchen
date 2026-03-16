@@ -1,0 +1,105 @@
+_format_version: "3.0"
+
+services:
+  #Change port number accordingly, if you change one, please check for overlaps
+  # Scenario 1
+- name: menu
+  url: https://your-environment.outsystemscloud.com/menuService #has to be hard coded unfortunately
+  routes:
+    - name: menu-routes
+      paths:
+        - /api/v1/menu
+      methods: ["GET"]
+
+- name: order-fulfilment
+  url: http://order-fulfilment:8081
+  routes:
+    - name: order-fulfilment-routes
+      paths:
+        - /api/v1/order/submit
+      methods: ["POST"]
+
+
+  # Scenario 2
+- name: assign-kitchen
+  url: http://assign-kitchen:8083
+  routes:
+    - name: assign-kitchen-routes
+      paths:
+        - /api/v1/kitchen/orders
+      methods: [ "GET" ]
+
+- name: order-fulfilment-coord
+  url: http://order-fulfilment-coord:8084
+  routes:
+    - name: order-fulfilment-coord-routes
+      paths:
+        - /api/v1/order/fulfil
+      methods: [ "POST" ]
+
+  # Scenario 3
+
+- name: assign-driver
+  url: http://assign-driver:8086
+  routes:
+    - name: assign-driver-routes
+      paths:
+        - /api/v1/driver/assign
+        - /api/v1/orders/available
+      methods: ["GET", "PUT"]
+
+- name: driver-location
+  url: http://driver-location:8087
+  routes:
+    - name: driver-location-routes
+      paths:
+        - /api/v1/driver/location
+        - /api/v1/driver/nearby
+      methods: ["POST", "GET"]
+
+- name: eta-tracking
+  url: http://eta-tracking:8088
+  routes:
+    - name: eta-tracking-routes
+      paths:
+        - /api/v1/eta
+      methods: ["GET", "POST"]
+
+  # Notification
+- name: notification-service
+  url: http://host.docker.internal:8090
+  routes:
+    - name: notification-route
+      paths:
+        - /api/notifications
+
+plugins:
+
+- name: rate-limiting
+  config:
+    minute: 120 #limits to 120 req per min (can change depending on usage)
+    policy: redis
+    redis:
+      host: redis
+      port: 6379
+      password: REDIS_PASSWORD #might have to be harded as well
+
+- name: cors
+  config:
+    origins:
+      - "http://localhost:5173"
+      - "http://localhost:5174"
+      - "http://localhost:5175"
+      #i assume we are gonna use vite, change to 3000 if using react app or smt
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE #remove if not needed
+      - OPTIONS #needed for cors check
+    headers:
+      - Content-Type #for json request parsing
+      - Authorization #auth tokens
+      - X-Driver-ID #custom header to identify driver
+    max_age: 3600 #cache preflight response for 1 hour
+    credentials: true #works with authorization header for JWT/cookies
