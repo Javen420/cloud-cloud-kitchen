@@ -4,7 +4,7 @@ services:
   #Change port number accordingly, if you change one, please check for overlaps
   # Scenario 1
 - name: menu
-  url: https://your-environment.outsystemscloud.com/menuService #has to be hard coded unfortunately
+  url: https://personal-dkkhoptv.outsystemscloud.com/MenuService/rest/MenuService/Menu #has to be hard coded unfortunately
   routes:
     - name: menu-routes
       paths:
