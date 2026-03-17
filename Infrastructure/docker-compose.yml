@@ -48,6 +48,13 @@ services:
 #Scenario 2
 
 #Scenario 3
+  eta-calculator:
+    build:
+      context: ../Atomic Services/ETA_Calculator
+    env_file: ../.env
+    ports:
+      - "8084:8084"
+    restart: unless-stopped
 
 #notification
 
