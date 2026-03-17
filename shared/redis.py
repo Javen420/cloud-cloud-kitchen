@@ -5,6 +5,6 @@ def get_redis() -> redis.Redis:
     return redis.Redis(
         host=os.getenv("REDIS_ADDR", "redis:6379").split(":")[0],
         port=int(os.getenv("REDIS_ADDR", "redis:6379").split(":")[1]),
-        password=os.getenv("REDIS_PASSWORD"),
+        password=os.getenv("REDIS_PASSWORD") or None,
         decode_responses=True,
     )

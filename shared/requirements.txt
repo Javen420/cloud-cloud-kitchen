@@ -1,0 +1,4 @@
+pydantic-settings
+supabase
+redis
+aio-pika
