@@ -6,14 +6,22 @@ function normalizeMenuItem(raw) {
   const name = raw?.Name ?? raw?.name;
   const price = raw?.price ?? raw?.Price ?? raw?.UnitPrice;
   const description = raw?.description ?? raw?.Description ?? "";
-  const category = raw?.category ?? raw?.Category ?? "Mains";
+  const imageUrl = raw?.ImgUrl ?? raw?.imgUrl ?? raw?.imageUrl ?? raw?.ImageUrl ?? null;
+  const calories = raw?.Calories ?? raw?.calories ?? null;
+  const typeId = raw?.TypeId ?? raw?.typeId ?? null;
+
+  const category =
+    raw?.category ??
+    raw?.Category ??
+    (typeId === 1 ? "Combo" : typeId === 2 ? "À la carte" : "Menu");
 
   return {
     id,
     name,
     price: typeof price === "string" ? Number(price) : price,
-    description,
+    description: description || (calories ? `${calories} kcal` : ""),
     category,
+    imageUrl,
     raw,
   };
 }

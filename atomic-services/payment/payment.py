@@ -2,8 +2,14 @@ import os
 import stripe
 from datetime import datetime
 from supabase import Client
+import httpx
+import pika
+import json
 
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+NEW_ORDERS_URL = os.getenv("NEW_ORDERS_URL", "http://new-orders:8082")
+RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672/")
 
 RECOVERY_STARTED        = "started"
 RECOVERY_RECORD_CREATED = "record_created"
@@ -193,3 +199,111 @@ def get_payment(
         "status"            : record["status"],
         "stripe_charge_id"  : record["stripe_charge_id"],
     }, 200
+
+
+def create_checkout_session(
+    db: Client,
+    user_id: str,
+    order_id: str,
+    items: list[dict],
+    total_amount: float,
+    currency: str = "sgd",
+    delivery_address: str | None = None,
+) -> tuple[dict, int]:
+    if not stripe.api_key:
+        return {"status": "error", "error": "STRIPE_SECRET_KEY is not set"}, 500
+
+    line_items = []
+    for item in items:
+        name = item.get("Name") or item.get("name") or "Item"
+        qty = int(item.get("quantity") or 1)
+        price = float(item.get("price") or 0)
+        unit_amount = int(round(price * 100))
+        line_items.append(
+            {
+                "price_data": {
+                    "currency": currency,
+                    "product_data": {"name": name},
+                    "unit_amount": unit_amount,
+                },
+                "quantity": qty,
+            }
+        )
+
+    success_url = f"{FRONTEND_URL}/customer/track/{order_id}?checkout=success"
+    cancel_url = f"{FRONTEND_URL}/customer/checkout?checkout=cancel&order_id={order_id}"
+
+    try:
+        session = stripe.checkout.Session.create(
+            mode="payment",
+            line_items=line_items,
+            success_url=success_url,
+            cancel_url=cancel_url,
+            metadata={"order_id": order_id, "user_id": user_id},
+        )
+    except stripe.error.StripeError as e:
+        return {"status": "error", "error": str(e)}, 503
+
+    # best-effort persist
+    db.table("payment_records").insert(
+        {
+            "idempotency_key_id": None,
+            "user_id": user_id,
+            "order_id": order_id,
+            "amount": int(round(total_amount * 100)),
+            "currency": currency,
+            "stripe_charge_id": session.id,
+            "status": "checkout_created",
+        }
+    ).execute()
+
+    return {"order_id": order_id, "checkout_url": session.url, "session_id": session.id, "status": "created"}, 200
+
+
+def handle_checkout_session_completed(db: Client, session: dict) -> None:
+    order_id = (session.get("metadata") or {}).get("order_id")
+    user_id = (session.get("metadata") or {}).get("user_id")
+    payment_intent = session.get("payment_intent")
+    if not order_id:
+        return
+
+    db.table("payment_records").update(
+        {
+            "status": "paid",
+            "stripe_charge_id": payment_intent or session.get("id"),
+        }
+    ).eq("order_id", order_id).execute()
+
+    # confirm order (best effort)
+    try:
+        with httpx.Client() as client:
+            client.post(
+                f"{NEW_ORDERS_URL}/orders",
+                json={"order_id": order_id, "kitchen_id": "kitchen_001"},
+                timeout=5,
+            )
+    except Exception:
+        pass
+
+    # publish notification (best effort)
+    try:
+        connection = pika.BlockingConnection(pika.URLParameters(RABBITMQ_URL))
+        channel = connection.channel()
+        channel.queue_declare(queue="notifications", durable=True)
+        payload = json.dumps(
+            {
+                "user_id": user_id or "",
+                "order_id": order_id,
+                "status": "confirmed",
+                "message": "Payment received. Your order is confirmed!",
+            }
+        )
+        channel.basic_publish(
+            exchange="",
+            routing_key="notifications",
+            body=payload,
+            properties=pika.BasicProperties(delivery_mode=2),
+        )
+        connection.close()
+    except Exception:
+        pass

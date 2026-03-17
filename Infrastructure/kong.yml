@@ -17,11 +17,18 @@ services:
     - name: order-fulfilment-routes
       paths:
         - /api/v1/order/submit
-      methods: ["POST"]
+      methods: ["POST", "OPTIONS"]
+      strip_path: false
+    - name: order-fulfilment-checkout-routes
+      paths:
+        - /api/v1/order/checkout
+      methods: ["POST", "OPTIONS"]
+      strip_path: false
     - name: order-fulfilment-tracking-routes
       paths:
         - /api/v1/order
       methods: ["GET"]
+      strip_path: false
 
 
   # Scenario 2
@@ -86,7 +93,7 @@ plugins:
     redis:
       host: redis
       port: 6379
-      password: REDIS_PASSWORD #might have to be harded as well
+      # Do not send Redis AUTH unless Redis is configured with a password
 
 - name: cors
   config:

@@ -100,7 +100,22 @@ export default function Menu() {
                   animate={{ opacity: 1 }}
                   className="p-5 bg-card border border-white/5 rounded-xl shadow-lg flex justify-between items-center gap-4"
                 >
-                  <div className="flex-1">
+                  <div className="flex items-center gap-4 flex-1 min-w-0">
+                    <div className="w-20 h-20 rounded-xl overflow-hidden bg-secondary/50 border border-white/10 shrink-0">
+                      {item.imageUrl ? (
+                        <img
+                          src={item.imageUrl}
+                          alt={item.name}
+                          className="w-full h-full object-cover"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-muted-foreground text-2xl">
+                          🍔
+                        </div>
+                      )}
+                    </div>
+
                     <h3 className="font-bold text-foreground">{item.name}</h3>
                     <p className="text-sm text-muted-foreground mt-1">{item.description}</p>
                     <p className="text-primary font-bold mt-2">${Number(item.price || 0).toFixed(2)}</p>

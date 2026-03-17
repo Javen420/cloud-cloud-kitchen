@@ -13,10 +13,16 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.append(str(ROOT_DIR))
 
 from shared.database import get_supabase
-from schemas import (AuthorizePaymentRequest, CapturePaymentRequest,
-                     RefundPaymentRequest, PaymentResponse)
+from schemas import (
+    AuthorizePaymentRequest,
+    CapturePaymentRequest,
+    RefundPaymentRequest,
+    PaymentResponse,
+    CreateCheckoutSessionRequest,
+    CreateCheckoutSessionResponse,
+)
 from payment import (authorize_payment, capture_payment,
-                              refund_payment, get_payment)
+                              refund_payment, get_payment, create_checkout_session, handle_checkout_session_completed)
 
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
@@ -78,10 +84,25 @@ def get_payment_by_id(
     return JSONResponse(content=response, status_code=status_code)
 
 
+@app.post("/payments/checkout-session", response_model=CreateCheckoutSessionResponse)
+def checkout_session(payload: CreateCheckoutSessionRequest, db: Client = Depends(get_db)):
+    items = [i.model_dump() for i in payload.items]
+    response, status_code = create_checkout_session(
+        db=db,
+        user_id=payload.user_id,
+        order_id=payload.order_id,
+        items=items,
+        total_amount=payload.total_amount,
+        currency=payload.currency,
+        delivery_address=payload.delivery_address,
+    )
+    return JSONResponse(content=response, status_code=status_code)
+
+
 @app.post("/payments/webhook")
 async def stripe_webhook(
     request: Request,
-    stripe_signature: str = Header(None),
+    stripe_signature: str = Header(None, alias="Stripe-Signature"),
 ):
     payload = await request.body()
     try:
@@ -96,7 +117,12 @@ async def stripe_webhook(
     event_type = event["type"]
     data_object = event["data"]["object"]
 
-    if event_type == "payment_intent.succeeded":
+    if event_type == "checkout.session.completed":
+        # Mark payment as paid and trigger order confirmation + notification
+        db = get_supabase()
+        handle_checkout_session_completed(db, data_object)
+        print(f"Checkout session completed: {data_object.get('id')}")
+    elif event_type == "payment_intent.succeeded":
         print(f"PaymentIntent succeeded: {data_object['id']}")
     elif event_type == "payment_intent.payment_failed":
         error_msg = data_object.get("last_payment_error", {}).get("message", "Unknown")

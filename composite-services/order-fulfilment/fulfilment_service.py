@@ -137,6 +137,50 @@ def submit_order(
     }, 200
 
 
+def start_checkout(
+    user_id: str,
+    items: list,
+    total_amount: float,
+    delivery_address: str | None,
+) -> tuple[dict, int]:
+    # Step 1: create pending order so we have an order_id
+    with httpx.Client() as client:
+        pending_resp = client.post(
+            f"{PENDING_ORDERS_URL}/orders",
+            json={
+                "user_id": user_id,
+                "items": items,
+                "total_amount": total_amount,
+                "delivery_address": delivery_address,
+            },
+        )
+
+    if pending_resp.status_code != 201:
+        return {"status": "failed", "error": "Failed to create order."}, 500
+
+    order_id = pending_resp.json()["order_id"]
+
+    # Step 2: create Stripe Checkout Session via payment service
+    with httpx.Client() as client:
+        checkout_resp = client.post(
+            f"{PAYMENT_URL}/payments/checkout-session",
+            json={
+                "user_id": user_id,
+                "order_id": order_id,
+                "items": items,
+                "total_amount": total_amount,
+                "currency": "sgd",
+                "delivery_address": delivery_address,
+            },
+        )
+
+    if checkout_resp.status_code != 200:
+        return {"status": "failed", "order_id": order_id, "error": "Failed to start checkout."}, 502
+
+    data = checkout_resp.json()
+    return {"status": "redirect", "order_id": order_id, "checkout_url": data["checkout_url"]}, 200
+
+
 def get_order_status(order_id: str) -> tuple[dict, int]:
     with httpx.Client() as client:
         resp = client.get(f"{PENDING_ORDERS_URL}/orders/{order_id}")

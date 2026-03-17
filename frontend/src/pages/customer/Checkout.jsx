@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { MapPin, Phone, User, CheckCircle2, Loader2 } from "lucide-react";
 import { Navbar } from "@/components/layout/Navbar";
 import { useCartStore } from "@/store/cartStore";
-import { submitOrder } from "@/api/orderService";
+import { startCheckout } from "@/api/orderService";
 
 export default function CustomerCheckout() {
   const [, setLocation] = useLocation();
@@ -26,12 +26,7 @@ export default function CustomerCheckout() {
     setIsPending(true);
     setError(null);
     try {
-      const stripeCustomerId = import.meta.env.VITE_STRIPE_CUSTOMER_ID;
-      if (!stripeCustomerId) {
-        throw new Error("Missing VITE_STRIPE_CUSTOMER_ID");
-      }
-
-      const data = await submitOrder({
+      const data = await startCheckout({
         user_id: formData.phone || formData.name || "customer",
         items: cartItems.map((item) => ({
           Id: item.id,
@@ -41,11 +36,9 @@ export default function CustomerCheckout() {
         })),
         total_amount: parseFloat((cartTotal + 4.99).toFixed(2)),
         delivery_address: formData.address,
-        stripe_customer_id: stripeCustomerId,
-        idempotency_key: crypto.randomUUID(),
       });
-      clearCart();
-      setLocation(`/customer/track/${data.order_id}`);
+      // redirect to Stripe Checkout
+      window.location.assign(data.checkout_url);
     } catch (err) {
       console.warn("Order failed:", err.message);
       setError("Something went wrong. Please try again.");

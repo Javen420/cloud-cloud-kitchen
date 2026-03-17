@@ -25,3 +25,18 @@ export async function getOrderStatus(orderId) {
 
   return res.json();
 }
+
+export async function startCheckout(orderData) {
+  const res = await fetch(`${BASE_URL}/api/v1/order/checkout`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(orderData),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || err.error || "Failed to start checkout");
+  }
+
+  return res.json();
+}
