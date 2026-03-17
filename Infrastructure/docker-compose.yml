@@ -81,6 +81,20 @@ services:
       rabbitmq:
         condition: service_healthy
 
+  order-fulfilment:
+    build:
+      context: ..
+      dockerfile: Composite Services/order-fulfilment/Dockerfile
+    env_file: ../.env
+    ports:
+      - "8081:8081"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+
 #Scenario 2
 
 #Scenario 3
