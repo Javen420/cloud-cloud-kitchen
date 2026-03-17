@@ -48,11 +48,12 @@ async def process_payment(
 
     key_id = key["id"]
 
-    # ── Phase 2: Create local order ──────────────────────────────────────────
+    # ── Phase 2: Create local payment record ─────────────────────────────────
     if key["recovery_point"] == RECOVERY_STARTED:
-        order_result = db.table("orders").insert({
+        record_result = db.table("payment_records").insert({
             "idempotency_key_id" : key_id,
             "user_id"            : user_id,
+            "order_id"           : None,
             "amount"             : amount,
             "currency"           : currency,
             "status"             : "pending",
@@ -66,8 +67,8 @@ async def process_payment(
 
     # ── Phase 3: Stripe PaymentIntent ────────────────────────────────────────
     if key["recovery_point"] == RECOVERY_ORDER_CREATED:
-        order_result = db.table("orders").select("*").eq("idempotency_key_id", key_id).execute()
-        order = order_result.data[0]
+        record_result = db.table("payment_records").select("*").eq("idempotency_key_id", key_id).execute()
+        record = record_result.data[0]
 
         try:
             charge = stripe.PaymentIntent.create(
@@ -76,7 +77,7 @@ async def process_payment(
                 customer=stripe_customer_id,
                 confirm=True,
                 automatic_payment_methods={"enabled": True, "allow_redirects": "never"},
-                metadata={"order_id": order["id"], "user_id": user_id},
+                metadata={"payment_record_id": record["id"], "user_id": user_id},
                 idempotency_key=f"charge-{key_id}",
             )
         except stripe.error.CardError as e:
@@ -93,10 +94,10 @@ async def process_payment(
             db.table("idempotency_keys").update({"locked_at": None}).eq("id", key_id).execute()
             return {"error": "Payment provider error. Please retry.", "status": "error"}, 503
 
-        db.table("orders").update({
+        db.table("payment_records").update({
             "stripe_charge_id" : charge.id,
             "status"           : "charged",
-        }).eq("id", order["id"]).execute()
+        }).eq("id", record["id"]).execute()
 
         db.table("idempotency_keys").update({
             "recovery_point": RECOVERY_CHARGE_CREATED
@@ -106,12 +107,12 @@ async def process_payment(
 
     # ── Phase 4: Finalize ────────────────────────────────────────────────────
     if key["recovery_point"] == RECOVERY_CHARGE_CREATED:
-        order_result = db.table("orders").select("*").eq("idempotency_key_id", key_id).execute()
-        order = order_result.data[0]
+        record_result = db.table("payment_records").select("*").eq("idempotency_key_id", key_id).execute()
+        record = record_result.data[0]
 
         response = {
-            "order_id"  : order["id"],
-            "charge_id" : order["stripe_charge_id"],
+            "order_id"  : record.get("order_id") or str(record["id"]),
+            "charge_id" : record["stripe_charge_id"],
             "status"    : "success",
         }
         db.table("idempotency_keys").update({

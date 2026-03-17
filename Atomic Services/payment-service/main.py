@@ -7,7 +7,11 @@ from fastapi import FastAPI, Depends, Request, HTTPException, Header
 from fastapi.responses import JSONResponse
 from supabase import Client
 
-sys.path.append(str(Path(__file__).resolve().parents[2] / "shared"))
+ROOT_DIR = Path(__file__).resolve().parents[2]
+SHARED_DIR = ROOT_DIR / "shared"
+if str(SHARED_DIR) not in sys.path:
+    sys.path.append(str(SHARED_DIR))
+
 from database import get_supabase
 
 from schemas import PaymentRequest, PaymentResponse
