@@ -192,7 +192,7 @@ def get_order_status(order_id: str) -> tuple[dict, int]:
         return {"error": "Failed to fetch order.", "status": "error"}, 502
 
     data = resp.json()
-    # pending-orders returns a flat object; normalize to what frontend expects
+    # pending-orders returns a flat object; normalize to what OrderUI expects
     return {
         "order_id": data.get("order_id") or order_id,
         "status": data.get("status"),

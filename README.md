@@ -9,7 +9,7 @@ This README is a quick checklist for **running the frontend** and **building/run
 ### Run
 
 ```bash
-cd frontend
+cd OrderUI
 npm install
 npm run dev
 ```

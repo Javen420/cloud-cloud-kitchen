@@ -131,3 +131,17 @@ services:
         condition: service_healthy
 
 #UI
+  order:
+    image: node:20-alpine
+    working_dir: /app
+    env_file: ../.env
+    volumes:
+      - ../UI/OrderUI:/app
+      - /app/node_modules
+    environment:
+      - HOST=0.0.0.0
+      - PORT=5173
+    command: sh -c "npm install --silent && npm run dev -- --host 0.0.0.0 --port 5173"
+    ports:
+      - "5173:5173"
+    restart: unless-stopped

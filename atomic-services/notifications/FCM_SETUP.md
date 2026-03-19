@@ -28,7 +28,7 @@ Optional env vars:
 Install:
 
 ```bash
-cd frontend/src
+cd OrderUI/src
 npm install
 ```
 
