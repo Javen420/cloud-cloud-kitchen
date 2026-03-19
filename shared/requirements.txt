@@ -1,4 +1,12 @@
-pydantic-settings
-supabase
-redis
 aio-pika
+fastapi
+firebase-admin
+httpx
+pika
+pydantic
+pydantic-settings
+python-dotenv
+redis
+stripe
+supabase
+uvicorn[standard]

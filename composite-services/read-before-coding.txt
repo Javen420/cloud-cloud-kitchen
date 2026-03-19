@@ -2,9 +2,9 @@
 Use kebab case for folder name (e.g. assign-driver)
 
 ── What composite services do ───────────────────────────
-- Orchestrate multiple atomic services into a single workflow
-- Call atomic services via HTTP or publish to RabbitMQ
-- Do NOT contain core business logic — that belongs in atomic services
+- Orchestrate multiple  services into a single workflow
+- Call  services via HTTP or publish to RabbitMQ
+- Do NOT contain core business logic — that belongs in  services
 
 ── Your routes and ports (from kong.yml) ────────────────
 Your endpoint paths and ports MUST match these exactly.
@@ -31,7 +31,7 @@ Scenario 3:
   @app.route("/api/v1/order/submit", methods=["POST"])
   def submit_order():
       data = request.get_json()
-      # orchestrate atomic services here
+      # orchestrate  services here
       return jsonify({"status": "order submitted"}), 201
 
   if __name__ == "__main__":
@@ -47,7 +47,7 @@ Scenario 3:
 
   @app.post("/api/v1/order/submit")
   def submit_order(data: dict):
-      # orchestrate atomic services here
+      # orchestrate  services here
       return {"status": "order submitted"}
 
   if __name__ == "__main__":

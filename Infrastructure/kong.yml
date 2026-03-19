@@ -4,7 +4,7 @@ services:
   #Change port number accordingly, if you change one, please check for overlaps
   # Scenario 1
 - name: menu
-  url: https://your-environment.outsystemscloud.com/menuService #has to be hard coded unfortunately
+  url: https://personal-dkkhoptv.outsystemscloud.com/MenuService/rest/MenuService/Menu #has to be hard coded unfortunately
   routes:
     - name: menu-routes
       paths:
@@ -17,7 +17,18 @@ services:
     - name: order-fulfilment-routes
       paths:
         - /api/v1/order/submit
-      methods: ["POST"]
+      methods: ["POST", "OPTIONS"]
+      strip_path: false
+    - name: order-fulfilment-checkout-routes
+      paths:
+        - /api/v1/order/checkout
+      methods: ["POST", "OPTIONS"]
+      strip_path: false
+    - name: order-fulfilment-tracking-routes
+      paths:
+        - /api/v1/order
+      methods: ["GET"]
+      strip_path: false
 
 
   # Scenario 2
@@ -67,7 +78,7 @@ services:
 
   # Notification
 - name: notification-service
-  url: http://host.docker.internal:8090
+  url: http://notifications:8090
   routes:
     - name: notification-route
       paths:
@@ -82,7 +93,7 @@ plugins:
     redis:
       host: redis
       port: 6379
-      password: REDIS_PASSWORD #might have to be harded as well
+      # Do not send Redis AUTH unless Redis is configured with a password
 
 - name: cors
   config:

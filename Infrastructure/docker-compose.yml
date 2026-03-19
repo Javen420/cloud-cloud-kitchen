@@ -4,11 +4,13 @@ services:
   redis:
     image: redis:7-alpine
     env_file: ../.env
-    command: redis-server --requirepass ${REDIS_PASSWORD}
+    environment:
+      # Do not set a password unless redis-server is configured with one
+      REDIS_PASSWORD: ""
     ports:
       - "6379:6379"
     healthcheck:
-      test: [ "CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping" ]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 5s
       retries: 3
 
@@ -44,18 +46,88 @@ services:
     restart: unless-stopped
 
 #Scenario 1
+  payment:
+    build:
+      context: ..
+      dockerfile: atomic-services/payment/Dockerfile
+    env_file: ../.env
+    ports:
+      - "8089:8089"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  pending-orders:
+    build:
+      context: ..
+      dockerfile: atomic-services/pending-orders/Dockerfile
+    env_file: ../.env
+    environment:
+      # Inside Docker, services must use the redis container hostname (not localhost)
+      REDIS_ADDR: redis:6379
+      # Keep empty unless redis is configured with requirepass
+      REDIS_PASSWORD: ""
+    ports:
+      - "8085:8085"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  new-orders:
+    build:
+      context: ..
+      dockerfile: atomic-services/new-orders/Dockerfile
+    env_file: ../.env
+    ports:
+      - "8082:8082"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  order-fulfilment:
+    build:
+      context: ..
+      dockerfile: composite-services/order-fulfilment/Dockerfile
+    env_file: ../.env
+    environment:
+      PENDING_ORDERS_URL: http://pending-orders:8085
+      NEW_ORDERS_URL: http://new-orders:8082
+      PAYMENT_URL: http://payment:8089
+    ports:
+      - "8081:8081"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
 
 #Scenario 2
 
 #Scenario 3
   eta-calculator:
     build:
-      context: ../Atomic Services/ETA_Calculator
+      context: ../atomic-services/etaCalculator
     env_file: ../.env
     ports:
       - "8084:8084"
     restart: unless-stopped
 
 #notification
+
+  notifications:
+    build:
+      context: ..
+      dockerfile: atomic-services/notifications/Dockerfile
+    env_file: ../.env
+    ports:
+      - "8090:8090"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
 
 #UI
