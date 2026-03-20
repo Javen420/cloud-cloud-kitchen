@@ -10,11 +10,11 @@ export default function AvailableOrdersPage() {
     >
       <div className="summary-banner">
         <div>
-          <span className="label">Current status</span>
+          <span className="middlebar">Current status</span>
           <p>Online and ready to accept jobs</p>
         </div>
         <div>
-          <span className="label">Available jobs</span>
+          <span className="middlebar">Available jobs</span>
           <p>{mockRiderOrders.length}</p>
         </div>
       </div>

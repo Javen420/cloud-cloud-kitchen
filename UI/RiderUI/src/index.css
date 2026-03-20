@@ -6,10 +6,11 @@
   --bg: #f4f7fb;
   --card: #ffffff;
   --text: #111827;
-  --muted: #6b7280;
+  --muted: #7b7f85;
   --border: #e5e7eb;
   --primary: #111827;
   --secondary: #eef2f7;
+  --tertiary: #dcc8c8;
   --accent: #0f766e;
   --success: #16a34a;
   --success-soft: #dcfce7;
@@ -130,6 +131,15 @@ button:hover {
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.middlebar {
+  display: block;
+  font-size: 0.76rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--tertiary);
   margin-bottom: 6px;
 }
 
