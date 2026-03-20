@@ -70,8 +70,8 @@ export default function Menu() {
                 onClick={() => setActiveCategory(cat)}
                 className={`px-4 py-1.5 rounded-full text-sm font-medium transition ${
                   activeCategory === cat
-                    ? "bg-primary text-white"
-                    : "bg-secondary/50 text-muted-foreground hover:text-foreground"
+                    ? "bg-primary text-[#A8D8FF] font-[700]"
+                    : "bg-white text-muted-background hover:text-foreground"
                 }`}
               >
                 {cat}
