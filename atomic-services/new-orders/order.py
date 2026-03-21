@@ -1,44 +1,37 @@
-from datetime import datetime
 from supabase import Client
 
 
-def confirm_order(
+def create_order(
     db: Client,
-    order_id: str,
-    kitchen_id: str,
+    customer_id: str,
+    items: list[dict],
+    total_cents: int,
+    dropoff_address: str,
+    dropoff_lat: float | None,
+    dropoff_lng: float | None,
+    payment_id: str,
 ) -> tuple[dict, int]:
 
-    # ── Fetch order ──────────────────────────────────────────────────────────
-    result = db.table("orders").select("*").eq("id", order_id).execute()
+    result = db.table("orders").insert({
+        "user_id"          : customer_id,
+        "items"            : items,
+        "total_amount"     : total_cents,
+        "delivery_address" : dropoff_address,
+        "status"           : "pending",
+    }).execute()
 
     if not result.data:
-        return {"error": "Order not found."}, 404
+        return {"error": "Failed to create order."}, 500
 
     order = result.data[0]
-
-    if order["status"] != "pending":
-        return {"error": f"Order is already {order['status']}."}, 409
-
-    # ── Update to confirmed ──────────────────────────────────────────────────
-    db.table("orders").update({
-        "status"     : "confirmed",
-        "kitchen_id" : kitchen_id,
-        "updated_at" : datetime.utcnow().isoformat(),
-    }).eq("id", order_id).execute()
-
     return {
-        "order_id"      : order_id,
-        "user_id"       : order["user_id"],
-        "status"        : "confirmed",
-        "total_amount"  : order["total_amount"],
-        "kitchen_id"    : kitchen_id,
-        "items"         : order["items"],
-    }, 200
-
-
-def get_confirmed_orders(db: Client) -> tuple[dict, int]:
-    result = db.table("orders").select("*").eq("status", "confirmed").execute()
-    return {"orders": result.data}, 200
+        "order_id"       : order["id"],
+        "customer_id"    : order["user_id"],
+        "items"          : order["items"],
+        "total_amount"   : order["total_amount"],
+        "delivery_address": order["delivery_address"],
+        "status"         : order["status"],
+    }, 201
 
 
 def get_order(db: Client, order_id: str) -> tuple[dict, int]:
@@ -48,3 +41,26 @@ def get_order(db: Client, order_id: str) -> tuple[dict, int]:
         return {"error": "Order not found."}, 404
 
     return {"order": result.data[0]}, 200
+
+
+def list_unassigned(db: Client) -> tuple[dict, int]:
+    result = (
+        db.table("orders")
+        .select("*")
+        .eq("status", "pending")
+        .order("updated_at")
+        .limit(20)
+        .execute()
+    )
+    return {"orders": result.data}, 200
+
+
+def update_order_status(db: Client, order_id: str, status: str) -> tuple[dict, int]:
+    result = db.table("orders").select("*").eq("id", order_id).execute()
+
+    if not result.data:
+        return {"error": "Order not found."}, 404
+
+    db.table("orders").update({"status": status}).eq("id", order_id).execute()
+
+    return {"order_id": order_id, "status": status}, 200
