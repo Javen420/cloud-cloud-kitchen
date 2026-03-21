@@ -1,189 +1,145 @@
 import os
+import uuid
 import pika
 import json
 import httpx
 
-PENDING_ORDERS_URL  = os.getenv("PENDING_ORDERS_URL", "http://pending-orders:8085")
-NEW_ORDERS_URL      = os.getenv("NEW_ORDERS_URL", "http://new-orders:8082")
-PAYMENT_URL         = os.getenv("PAYMENT_URL", "http://payment:8089")
-RABBITMQ_URL        = os.getenv("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672/")
+PAYMENT_URL    = os.getenv("PAYMENT_URL", "http://payment:8089")
+NEW_ORDERS_URL = os.getenv("NEW_ORDERS_URL", "http://new-orders:8082")
+RABBITMQ_URL   = os.getenv("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672/")
 
 
 def publish_notification(user_id: str, order_id: str, status: str, message: str):
     try:
         connection = pika.BlockingConnection(pika.URLParameters(RABBITMQ_URL))
         channel = connection.channel()
-        channel.queue_declare(queue="notifications", durable=True)
+        channel.exchange_declare(exchange="order_events", exchange_type="topic", durable=True)
 
         payload = json.dumps({
-            "user_id"   : user_id,
-            "order_id"  : order_id,
-            "status"    : status,
-            "message"   : message,
+            "user_id"  : user_id,
+            "order_id" : order_id,
+            "status"   : status,
+            "message"  : message,
         })
 
         channel.basic_publish(
-            exchange="",
-            routing_key="notifications",
+            exchange="order_events",
+            routing_key="order.created",
             body=payload,
-            properties=pika.BasicProperties(delivery_mode=2),  # persistent
+            properties=pika.BasicProperties(delivery_mode=2),
         )
         connection.close()
     except Exception as e:
-        print(f"⚠️ Notification publish failed: {e}")
+        print(f"Notification publish failed: {e}")
 
 
 def submit_order(
-    user_id: str,
+    customer_id: str,
     items: list,
-    total_amount: float,
-    delivery_address: str | None,
-    stripe_customer_id: str,
+    dropoff_address: str,
+    dropoff_lat: float | None,
+    dropoff_lng: float | None,
     idempotency_key: str,
 ) -> tuple[dict, int]:
+    """
+    Orchestrates the full order flow:
+      1. Calculate total from items
+      2. Process payment via Payment service → Stripe
+      3. If payment fails → return error, don't create order
+      4. Create order in New Orders service
+      5. Publish order.created notification via AMQP
+      6. Return confirmation
+    """
 
-    # ── Step 1: Create pending order ─────────────────────────────────────────
-    with httpx.Client() as client:
-        pending_resp = client.post(
-            f"{PENDING_ORDERS_URL}/orders",
-            json={
-                "user_id"           : user_id,
-                "items"             : items,
-                "total_amount"      : total_amount,
-                "delivery_address"  : delivery_address,
-            }
-        )
+    # ── Step 1: Calculate total ────────────────────────────────────────────────
+    total_cents = 0
+    for item in items:
+        total_cents += int(round(item["price"] * item["quantity"] * 100))
 
-    if pending_resp.status_code != 201:
-        return {"error": "Failed to create order.", "status": "failed"}, 500
+    order_id = str(uuid.uuid4())
 
-    order_data = pending_resp.json()
-    order_id = order_data["order_id"]
-
-    # ── Step 2: Authorize payment ─────────────────────────────────────────────
-    with httpx.Client() as client:
+    # ── Step 2: Process payment (steps 4-7 in diagram) ─────────────────────────
+    with httpx.Client(timeout=10.0) as client:
         payment_resp = client.post(
-            f"{PAYMENT_URL}/payments/authorize",
+            f"{PAYMENT_URL}/api/v1/payment",
             json={
-                "user_id"               : user_id,
-                "order_id"              : order_id,
-                "amount"                : total_amount,
-                "stripe_customer_id"    : stripe_customer_id,
-                "idempotency_key"       : idempotency_key,
-            }
+                "order_id"        : order_id,
+                "customer_id"     : customer_id,
+                "amount_cents"    : total_cents,
+                "currency"        : "sgd",
+                "idempotency_key" : idempotency_key,
+            },
         )
 
     if payment_resp.status_code != 200:
-        # ── Payment failed → update order to failed ──────────────────────────
-        with httpx.Client() as client:
-            client.put(
-                f"{PENDING_ORDERS_URL}/orders/{order_id}/status",
-                json={"status": "failed"}
-            )
-
-        publish_notification(
-            user_id=user_id,
-            order_id=order_id,
-            status="failed",
-            message="Your order payment failed. Please try again.",
-        )
+        try:
+            err_body = payment_resp.json()
+        except Exception:
+            err_body = {"error": f"Payment service returned {payment_resp.status_code}"}
         return {
-            "order_id"  : order_id,
-            "status"    : "failed",
-            "error"     : payment_resp.json().get("error", "Payment failed."),
-        }, 402
+            "order_id"   : order_id,
+            "status"     : "failed",
+            "total_cents": total_cents,
+            "error"      : err_body.get("error", "Payment service error"),
+        }, payment_resp.status_code
 
     payment_data = payment_resp.json()
 
-    # ── Step 3: Confirm order via New Orders ──────────────────────────────────
-    with httpx.Client() as client:
-        confirm_resp = client.post(
-            f"{NEW_ORDERS_URL}/orders",
+    # ── Step 3: Payment failed → stop here ─────────────────────────────────────
+    if payment_data.get("status") != "succeeded":
+        return {
+            "order_id"   : order_id,
+            "status"     : "failed",
+            "total_cents": total_cents,
+            "error"      : payment_data.get("error", "Payment was not successful"),
+        }, 402
+
+    # ── Step 4: Create order in New Orders (step 8 in diagram) ─────────────────
+    with httpx.Client(timeout=10.0) as client:
+        order_resp = client.post(
+            f"{NEW_ORDERS_URL}/api/v1/orders",
             json={
-                "order_id"  : order_id,
-                "kitchen_id": "kitchen_001",    # default kitchen — update when Assign Kitchen is ready
-            }
+                "customer_id"     : customer_id,
+                "items"           : items,
+                "total_cents"     : total_cents,
+                "dropoff_address" : dropoff_address,
+                "dropoff_lat"     : dropoff_lat,
+                "dropoff_lng"     : dropoff_lng,
+                "payment_id"      : payment_data.get("payment_id", ""),
+            },
         )
 
-    if confirm_resp.status_code != 200:
+    if order_resp.status_code not in (200, 201):
         return {
-            "order_id"  : order_id,
-            "status"    : "failed",
-            "error"     : "Failed to confirm order with kitchen.",
+            "order_id"   : order_id,
+            "status"     : "failed",
+            "total_cents": total_cents,
+            "error"      : "Failed to create order.",
         }, 500
 
-    # ── Step 4: Capture payment ───────────────────────────────────────────────
-    with httpx.Client() as client:
-        capture_resp = client.post(
-            f"{PAYMENT_URL}/payments/capture",
-            json={"payment_intent_id": payment_data["stripe_charge_id"]}
-        )
+    order_data = order_resp.json()
+    final_order_id = order_data.get("order_id", order_id)
 
-    if capture_resp.status_code != 200:
-        print(f"⚠️ Payment capture failed for order {order_id} — manual review needed")
-
-    # ── Step 5: Publish notification ──────────────────────────────────────────
+    # ── Step 5: Publish notification (step 9 in diagram) ───────────────────────
     publish_notification(
-        user_id=user_id,
-        order_id=order_id,
+        user_id=customer_id,
+        order_id=final_order_id,
         status="confirmed",
         message="Your order has been confirmed and is being prepared!",
     )
 
+    # ── Step 6: Return confirmation ────────────────────────────────────────────
     return {
-        "order_id"  : order_id,
-        "status"    : "confirmed",
-        "message"   : "Order placed successfully!",
+        "order_id"   : final_order_id,
+        "payment_id" : payment_data.get("payment_id"),
+        "status"     : "confirmed",
+        "total_cents": total_cents,
     }, 200
 
 
-def start_checkout(
-    user_id: str,
-    items: list,
-    total_amount: float,
-    delivery_address: str | None,
-) -> tuple[dict, int]:
-    # Step 1: create pending order so we have an order_id
-    with httpx.Client() as client:
-        pending_resp = client.post(
-            f"{PENDING_ORDERS_URL}/orders",
-            json={
-                "user_id": user_id,
-                "items": items,
-                "total_amount": total_amount,
-                "delivery_address": delivery_address,
-            },
-        )
-
-    if pending_resp.status_code != 201:
-        return {"status": "failed", "error": "Failed to create order."}, 500
-
-    order_id = pending_resp.json()["order_id"]
-
-    # Step 2: create Stripe Checkout Session via payment service
-    with httpx.Client() as client:
-        checkout_resp = client.post(
-            f"{PAYMENT_URL}/payments/checkout-session",
-            json={
-                "user_id": user_id,
-                "order_id": order_id,
-                "items": items,
-                "total_amount": total_amount,
-                "currency": "sgd",
-                "delivery_address": delivery_address,
-            },
-        )
-
-    if checkout_resp.status_code != 200:
-        return {"status": "failed", "order_id": order_id, "error": "Failed to start checkout."}, 502
-
-    data = checkout_resp.json()
-    return {"status": "redirect", "order_id": order_id, "checkout_url": data["checkout_url"]}, 200
-
-
 def get_order_status(order_id: str) -> tuple[dict, int]:
-    with httpx.Client() as client:
-        resp = client.get(f"{PENDING_ORDERS_URL}/orders/{order_id}")
+    with httpx.Client(timeout=10.0) as client:
+        resp = client.get(f"{NEW_ORDERS_URL}/api/v1/orders/{order_id}")
 
     if resp.status_code == 404:
         return {"error": "Order not found.", "status": "not_found"}, 404
@@ -191,12 +147,11 @@ def get_order_status(order_id: str) -> tuple[dict, int]:
     if resp.status_code != 200:
         return {"error": "Failed to fetch order.", "status": "error"}, 502
 
-    data = resp.json()
-    # pending-orders returns a flat object; normalize to what OrderUI expects
+    data = resp.json().get("order", resp.json())
     return {
-        "order_id": data.get("order_id") or order_id,
-        "status": data.get("status"),
-        "delivery_address": data.get("delivery_address"),
-        "total_amount": data.get("total_amount"),
-        "items": data.get("items", []),
+        "order_id"        : data.get("order_id") or order_id,
+        "status"          : data.get("status"),
+        "dropoff_address" : data.get("dropoff_address"),
+        "total_cents"     : data.get("total_cents"),
+        "items"           : data.get("items", []),
     }, 200

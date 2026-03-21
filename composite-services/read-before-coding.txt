@@ -53,6 +53,16 @@ Scenario 3:
   if __name__ == "__main__":
       uvicorn.run(app, host="0.0.0.0", port=8081)
 
+── Order-fulfilment flow (Scenario 1) ─────────────────
+The order flow is fully synchronous (no Stripe redirects/webhooks):
+  1. UI calls POST /api/v1/order/submit → order-fulfilment (8081)
+  2. order-fulfilment calculates total from items
+  3. Calls payment service POST http://payment:8089/api/v1/payment
+  4. If payment fails → return error to UI
+  5. Calls new-orders POST http://new-orders:8082/api/v1/orders
+  6. Publishes AMQP notification (exchange: order_events, key: order.created)
+  7. Returns confirmation to UI
+
 ── Calling other services ───────────────────────────────
 - Use the Docker service name as hostname:
     requests.get("http://driver-location:8087/api/v1/driver/nearby")

@@ -19,11 +19,6 @@ services:
         - /api/v1/order/submit
       methods: ["POST", "OPTIONS"]
       strip_path: false
-    - name: order-fulfilment-checkout-routes
-      paths:
-        - /api/v1/order/checkout
-      methods: ["POST", "OPTIONS"]
-      strip_path: false
     - name: order-fulfilment-tracking-routes
       paths:
         - /api/v1/order

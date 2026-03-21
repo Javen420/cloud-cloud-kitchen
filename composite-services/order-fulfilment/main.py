@@ -1,36 +1,31 @@
-import os
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from schemas import OrderSubmission, OrderSubmissionResponse
+from fulfilment_service import submit_order, get_order_status
 
-from schemas import SubmitOrderRequest, SubmitOrderResponse, StartCheckoutRequest, StartCheckoutResponse
-from fulfilment_service import submit_order, get_order_status, start_checkout
+app = FastAPI(title="Order Fulfilment Service", version="2.0.0")
 
-app = FastAPI(title="Order Fulfilment Service", version="1.0.0")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
-@app.post("/api/v1/order/submit", response_model=SubmitOrderResponse)
-def submit(payload: SubmitOrderRequest):
+@app.post("/api/v1/order/submit", response_model=OrderSubmissionResponse)
+def submit(payload: OrderSubmission):
     items = [item.model_dump() for item in payload.items]
     response, status_code = submit_order(
-        user_id             =payload.user_id,
-        items               =items,
-        total_amount        =payload.total_amount,
-        delivery_address    =payload.delivery_address,
-        stripe_customer_id  =payload.stripe_customer_id,
-        idempotency_key     =payload.idempotency_key,
-    )
-    return JSONResponse(content=response, status_code=status_code)
-
-
-@app.post("/api/v1/order/checkout", response_model=StartCheckoutResponse)
-def checkout(payload: StartCheckoutRequest):
-    items = [item.model_dump() for item in payload.items]
-    response, status_code = start_checkout(
-        user_id=payload.user_id,
+        customer_id=payload.customer_id,
         items=items,
-        total_amount=payload.total_amount,
-        delivery_address=payload.delivery_address,
+        dropoff_address=payload.dropoff_address,
+        dropoff_lat=payload.dropoff_lat,
+        dropoff_lng=payload.dropoff_lng,
+        idempotency_key=payload.idempotency_key,
     )
     return JSONResponse(content=response, status_code=status_code)
 

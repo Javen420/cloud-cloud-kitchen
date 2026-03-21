@@ -17,13 +17,11 @@ All services load environment variables from the **root** `.env`.
   - `SUPABASE_URL`
   - `SUPABASE_KEY`
   - `STRIPE_SECRET_KEY`
-  - `STRIPE_WEBHOOK_SECRET` (for Stripe webhooks)
   - `REDIS_ADDR=localhost:6379` (or your Redis host:port)
   - `REDIS_PASSWORD` (if required, else empty)
 - Supabase tables:
-  - `orders`
-  - `idempotency_keys`
-  - `payment_records`
+  - `orders` (columns: `id`, `user_id`, `items`, `total_amount`, `delivery_address`, `status`, `updated_at`, `kitchen_id`)
+  - `payment_records` (columns: `id`, `stripe_charge_id`, `user_id`, `order_id`, `amount`, `currency`, `status`, `idempotency_key_id`)
 
 Install dependencies once:
 
@@ -106,61 +104,76 @@ curl http://localhost:8085/orders/<order_id>
 
 ---
 
-### 5. new-orders: confirm order
+### 5. new-orders: create and fetch order
 
-Use the `order_id` from pending-orders:
+Create an order (called by order-fulfilment after payment succeeds):
 
 ```bash
-curl -X POST http://localhost:8082/orders \
+curl -X POST http://localhost:8082/api/v1/orders \
   -H "Content-Type: application/json" \
   -d '{
-    "order_id": "<order_id>",
-    "kitchen_id": "kitchen_1"
+    "customer_id": "user_123",
+    "items": [{"Id": "burger_1", "Name": "Burger", "quantity": 1, "price": 12.00}],
+    "total_cents": 1200,
+    "dropoff_address": "123 Test Street",
+    "payment_id": "pi_test_123"
   }'
 ```
 
-Expected: JSON with `status: "confirmed"`.
+Expected: HTTP 201 with JSON containing `order_id` and `status: "pending"`.
 
-Fetch confirmed order:
+Fetch that order:
 
 ```bash
-curl http://localhost:8082/orders/<order_id>
+curl http://localhost:8082/api/v1/orders/<order_id>
 ```
+
+List unassigned orders:
+
+```bash
+curl http://localhost:8082/api/v1/orders/unassigned
+```
+
+Update order status:
+
+```bash
+curl -X PUT http://localhost:8082/api/v1/orders/<order_id>/status \
+  -H "Content-Type: application/json" \
+  -d '{"status": "confirmed"}'
+```
+
+**Note:** new-orders writes to the `orders` table in Supabase (columns: `id`, `user_id`, `items`, `total_amount`, `delivery_address`, `status`).
 
 ---
 
-### 6. payment: authorize / capture / refund
+### 6. payment: process payment (synchronous)
 
-Create a Stripe test customer with a default card (using Stripe CLI):
+No Stripe CLI setup needed — the service uses a hardcoded test card (`pm_card_visa`) with `confirm=True`.
 
-```bash
-stripe customers create
-stripe payment_methods create --type card --card[number]=4242424242424242 --card[exp_month]=12 --card[exp_year]=2030 --card[cvc]=123
-stripe payment_methods attach pm_xxx --customer cus_xxx
-stripe customers update cus_xxx --invoice_settings[default_payment_method]=pm_xxx
-```
-
-Authorize payment:
+Process a payment:
 
 ```bash
-curl -X POST http://localhost:8089/payments/authorize \
+curl -X POST http://localhost:8089/api/v1/payment \
   -H "Content-Type: application/json" \
   -d '{
-    "user_id": "user_123",
-    "order_id": "<order_id>",
-    "amount": 1200,
-    "stripe_customer_id": "cus_xxx",
+    "order_id": "test-123",
+    "customer_id": "user_123",
+    "amount_cents": 1200,
+    "currency": "sgd",
     "idempotency_key": "pay-test-001"
   }'
 ```
 
-Capture:
+Expected: `"status": "succeeded"` with a `payment_id` starting with `pi_`.
+Verify in [Stripe test dashboard](https://dashboard.stripe.com/test/payments).
+
+Capture (after authorization):
 
 ```bash
 curl -X POST http://localhost:8089/payments/capture \
   -H "Content-Type: application/json" \
   -d '{
-    "payment_intent_id": "<payment_intent_id-from-authorize>"
+    "payment_intent_id": "<pi_xxx from above>"
   }'
 ```
 
@@ -170,10 +183,12 @@ Refund (optional):
 curl -X POST http://localhost:8089/payments/refund \
   -H "Content-Type: application/json" \
   -d '{
-    "payment_intent_id": "<payment_intent_id-from-authorize>",
+    "payment_intent_id": "<pi_xxx>",
     "reason": "requested_by_customer"
   }'
 ```
+
+**Note:** Payment records are stored in the `payment_records` table (columns: `stripe_charge_id`, `user_id`, `amount`, `currency`, `status`). The `order_id` column is omitted on insert due to a FK constraint — the order doesn't exist yet at payment time.
 
 ---
 

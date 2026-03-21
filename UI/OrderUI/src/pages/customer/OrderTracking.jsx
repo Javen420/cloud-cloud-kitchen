@@ -135,11 +135,11 @@ export default function OrderTracking() {
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between text-muted-foreground">
                     <span>Delivering to</span>
-                    <span className="text-foreground text-right max-w-[60%]">{order.delivery_address}</span>
+                    <span className="text-foreground text-right max-w-[60%]">{order.dropoff_address}</span>
                   </div>
                   <div className="flex justify-between text-muted-foreground">
                     <span>Total Paid</span>
-                    <span className="text-primary font-bold">${order.total_amount?.toFixed(2)}</span>
+                    <span className="text-primary font-bold">${(order.total_cents / 100)?.toFixed(2)}</span>
                   </div>
                 </div>
               </div>

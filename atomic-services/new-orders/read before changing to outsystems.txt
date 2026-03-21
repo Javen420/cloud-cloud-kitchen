@@ -1,0 +1,76 @@
+── Replacing new-orders with OutSystems ─────────────────
+
+The order-fulfilment composite service calls new-orders via HTTP.
+Your OutSystems service must match these contracts exactly.
+
+── POST endpoint ────────────────────────────────────────
+
+  POST /api/v1/orders
+
+Request body (JSON):
+
+  {
+    "customer_id": "string",
+    "items": [{"Id": "string", "Name": "string", "quantity": 1, "price": 12.00}],
+    "total_cents": 1200,
+    "dropoff_address": "123 Orchard Rd",
+    "dropoff_lat": null,
+    "dropoff_lng": null,
+    "payment_id": "pi_xxx"
+  }
+
+Expected response (HTTP 200 or 201):
+
+  {
+    "order_id": "some-uuid"
+  }
+
+The fulfilment service reads order_data.get("order_id", order_id)
+from the response — order_id is the critical field.
+
+── GET endpoint (for order tracking) ────────────────────
+
+  GET /api/v1/orders/{order_id}
+
+Expected response:
+
+  {
+    "order": {
+      "order_id": "...",
+      "status": "pending",
+      "dropoff_address": "...",
+      "total_cents": 1200,
+      "items": [...]
+    }
+  }
+
+── Things to watch out for ──────────────────────────────
+
+1. Field names must match exactly
+   OutSystems often uses PascalCase (OrderId, TotalCents).
+   If so, either adjust the OutSystems output to use snake_case
+   or update fulfilment_service.py to read the different casing.
+
+2. Content-Type: application/json
+   Make sure the OutSystems REST endpoint accepts and returns JSON,
+   not form data.
+
+3. Docker networking / URL config
+   Update NEW_ORDERS_URL in .env and docker-compose.yml to point
+   to the OutSystems public URL instead of http://new-orders:8082.
+   Example: NEW_ORDERS_URL=https://your-outsystems-url.com
+
+4. CORS
+   Not an issue — only the backend (fulfilment service) calls it,
+   not the browser.
+
+5. Database
+   If OutSystems uses its own database instead of Supabase, the
+   order tracking page still needs to fetch order status. Make sure
+   the GET endpoint returns current status.
+
+── Files to update when switching ───────────────────────
+
+  .env                          → change NEW_ORDERS_URL
+  Infrastructure/docker-compose.yml → change NEW_ORDERS_URL env var
+                                    → optionally remove new-orders service definition
