@@ -59,24 +59,26 @@ services:
       redis:
         condition: service_healthy
 
-  pending-orders:
-    build:
-      context: ..
-      dockerfile: atomic-services/pending-orders/Dockerfile
-    env_file: ../.env
-    environment:
-      # Inside Docker, services must use the redis container hostname (not localhost)
-      REDIS_ADDR: redis:6379
-      # Keep empty unless redis is configured with requirepass
-      REDIS_PASSWORD: ""
-    ports:
-      - "8085:8085"
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+#  pending-orders:
+#    build:
+#      context: ..
+#      dockerfile: atomic-services/pending-orders/Dockerfile
+#    env_file: ../.env
+#    environment:
+#      # Inside Docker, services must use the redis container hostname (not localhost)
+#      REDIS_ADDR: redis:6379
+#      # Keep empty unless redis is configured with requirepass
+#      REDIS_PASSWORD: ""
+#    ports:
+#      - "8085:8085"
+#    depends_on:
+#      rabbitmq:
+#        condition: service_healthy
+#      redis:
+#        condition: service_healthy
 
+
+#change to outsystems
   new-orders:
     build:
       context: ..
