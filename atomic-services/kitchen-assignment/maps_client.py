@@ -3,7 +3,7 @@ import requests
 from dataclasses import dataclass
 from typing import List, Tuple
 
-GOOGLE_MAPS_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY", "AIzaSyB0VLJJcl0UBt3AVpHWrWciNFPraN_bdoE")
+GOOGLE_MAPS_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY", "")
 GEOCODING_URL       = "https://maps.googleapis.com/maps/api/geocode/json"
 DISTANCE_MATRIX_URL = "https://maps.googleapis.com/maps/api/distancematrix/json"
 
