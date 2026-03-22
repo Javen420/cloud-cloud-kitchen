@@ -7,55 +7,61 @@ from fastapi.responses import JSONResponse
 from supabase import Client
 
 ROOT_DIR = Path(__file__).resolve().parent
-load_dotenv()  # loads from current dir, or just remove this line entirely
+load_dotenv()
 if str(ROOT_DIR) not in sys.path:
     sys.path.append(str(ROOT_DIR))
 
 from shared.database import get_supabase
-from schemas import ConfirmOrderRequest
-from order import confirm_order, get_confirmed_orders
+from schemas import CreateOrderRequest, UpdateStatusRequest
+from order import create_order, get_order, list_unassigned, update_order_status
 
-app = FastAPI(title="New Orders Service", version="1.0.0")
+app = FastAPI(title="New Orders Service", version="2.0.0")
 
 
 def get_db() -> Client:
     return get_supabase()
 
 
-@app.post("/orders")
-def create_confirmed_order(
-    payload: ConfirmOrderRequest,
+@app.post("/api/v1/orders")
+def create(
+    payload: CreateOrderRequest,
     db: Client = Depends(get_db),
 ):
-    response, status_code = confirm_order(
+    response, status_code = create_order(
         db=db,
-        order_id=payload.order_id,
-        kitchen_id=payload.kitchen_id,
+        customer_id=payload.customer_id,
+        items=payload.items,
+        total_cents=payload.total_cents,
+        dropoff_address=payload.dropoff_address,
+        dropoff_lat=payload.dropoff_lat,
+        dropoff_lng=payload.dropoff_lng,
+        payment_id=payload.payment_id,
     )
     return JSONResponse(content=response, status_code=status_code)
 
 
-@app.get("/orders/{order_id}")
+@app.get("/api/v1/orders/unassigned")
+def unassigned(db: Client = Depends(get_db)):
+    response, status_code = list_unassigned(db=db)
+    return JSONResponse(content=response, status_code=status_code)
+
+
+@app.get("/api/v1/orders/{order_id}")
 def get_order_by_id(
     order_id: str,
     db: Client = Depends(get_db),
 ):
-    from order import get_order
     response, status_code = get_order(db=db, order_id=order_id)
     return JSONResponse(content=response, status_code=status_code)
 
 
-@app.put("/orders/{order_id}/status")
-def update_order_status(
+@app.put("/api/v1/orders/{order_id}/status")
+def update_status(
     order_id: str,
-    payload: ConfirmOrderRequest,
+    payload: UpdateStatusRequest,
     db: Client = Depends(get_db),
 ):
-    response, status_code = confirm_order(
-        db=db,
-        order_id=order_id,
-        kitchen_id=payload.kitchen_id,
-    )
+    response, status_code = update_order_status(db=db, order_id=order_id, status=payload.status)
     return JSONResponse(content=response, status_code=status_code)
 
 

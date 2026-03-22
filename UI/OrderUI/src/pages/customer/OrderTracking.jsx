@@ -39,6 +39,7 @@ export default function OrderTracking() {
     };
 
     fetchOrder();
+    // Poll every 10 seconds for status updates
     interval = setInterval(fetchOrder, 10000);
     return () => clearInterval(interval);
   }, [orderId]);
@@ -57,8 +58,8 @@ export default function OrderTracking() {
             ...(prev || {}),
             order_id: data.order_id || orderId,
             status: data.status || prev?.status,
-            delivery_address: data.delivery_address || prev?.delivery_address,
-            total_amount: data.total_amount ? Number(data.total_amount) : prev?.total_amount,
+            dropoff_address: data.dropoff_address || data.delivery_address || prev?.dropoff_address,
+            total_cents: data.total_cents ? Number(data.total_cents) : prev?.total_cents,
           }));
         });
       } catch {
@@ -157,22 +158,19 @@ export default function OrderTracking() {
                 </div>
               </div>
 
-              <div className="rounded-3xl border border-border bg-card p-6 shadow-sm">
-                <h3 className="font-bold text-foreground mb-4">Details</h3>
-                <dl className="space-y-4 text-sm">
-                  <div>
-                    <dt className="text-muted-foreground mb-1">Delivering to</dt>
-                    <dd className="text-foreground font-medium leading-relaxed">
-                      {order.delivery_address || "—"}
-                    </dd>
+              {/* Order Details */}
+              <div className="p-6 bg-card border border-white/5 rounded-xl shadow-xl">
+                <h3 className="font-bold mb-4">Order Details</h3>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Delivering to</span>
+                    <span className="text-foreground text-right max-w-[60%]">{order.dropoff_address}</span>
                   </div>
-                  <div className="flex justify-between items-center pt-2 border-t border-border">
-                    <dt className="text-muted-foreground">Total</dt>
-                    <dd className="text-lg font-extrabold text-primary tabular-nums">
-                      ${order.total_amount != null ? Number(order.total_amount).toFixed(2) : "—"}
-                    </dd>
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Total Paid</span>
+                    <span className="text-primary font-bold">${(order.total_cents / 100)?.toFixed(2)}</span>
                   </div>
-                </dl>
+                </div>
               </div>
 
               {order.status === "delivered" && (

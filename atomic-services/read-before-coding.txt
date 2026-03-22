@@ -9,6 +9,13 @@ Use kebab case for folder name (e.g. driver-location)
 ── Your routes and ports (from kong.yml) ────────────────
 Your endpoint paths and ports MUST match these exactly.
 
+Scenario 1 (called internally by order-fulfilment composite):
+  payment                | port 8089 | POST /api/v1/payment
+  new-orders             | port 8082 | POST /api/v1/orders
+                                      | GET  /api/v1/orders/unassigned
+                                      | GET  /api/v1/orders/{order_id}
+                                      | PUT  /api/v1/orders/{order_id}/status
+
 Scenario 3:
   driver-location        | port 8087 | POST, GET /api/v1/driver/location
                                       | POST, GET /api/v1/driver/nearby
@@ -22,6 +29,10 @@ Notification:
 Note: atomic services that are only called internally (via RabbitMQ
 or by a composite service) do NOT need a Kong route. They still need
 a port if called via HTTP.
+
+── Supabase tables ─────────────────────────────────────
+  orders          | id, user_id, items, total_amount, delivery_address, status, updated_at, kitchen_id
+  payment_records | id, stripe_charge_id, user_id, order_id (FK→orders), amount, currency, status, idempotency_key_id
 
 ── Flask example (driver-location on port 8087) ─────────
 
