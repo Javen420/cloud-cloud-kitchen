@@ -131,6 +131,8 @@ services:
       context: ..
       dockerfile: atomic-services/notifications/Dockerfile
     env_file: ../.env
+    volumes:
+      - ../atomic-services/notifications/firebase-service-account.json:/app/firebase-service-account.json:ro
     ports:
       - "8090:8090"
     depends_on:

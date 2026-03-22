@@ -34,7 +34,7 @@ def _init_firebase():
     firebase_admin.initialize_app(cred)
 
 
-RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
+RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672/")
 QUEUE_NAME = os.getenv("NOTIFICATION_QUEUE", "notifications")
 RETRY_QUEUE_NAME = os.getenv("NOTIFICATION_RETRY_QUEUE", "notifications.retry")
 DLQ_NAME = os.getenv("NOTIFICATION_DLQ", "notifications.dlq")

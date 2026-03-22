@@ -84,6 +84,7 @@ postgres-data/
 *.key
 *.crt
 secrets/
+firebase-service-account.json
 
 # ========================
 # IDE / OS
