@@ -10,13 +10,11 @@ Your OutSystems service must match these contracts exactly.
 Request body (JSON):
 
   {
-    "customer_id": "string",
-    "items": [{"Id": "string", "Name": "string", "quantity": 1, "price": 12.00}],
-    "total_cents": 1200,
-    "dropoff_address": "123 Orchard Rd",
-    "dropoff_lat": null,
-    "dropoff_lng": null,
-    "payment_id": "pi_xxx"
+  "CustId": "",
+  "DeliveryAddress": "",
+  "TotalPrice": 0.1,
+  "Items": ""
+  "PaymentId": "pi_xxx"
   }
 
 Expected response (HTTP 200 or 201):

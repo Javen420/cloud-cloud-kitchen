@@ -5,7 +5,7 @@ import json
 import httpx
 
 PAYMENT_URL    = os.getenv("PAYMENT_URL", "http://payment:8089")
-NEW_ORDERS_URL = os.getenv("NEW_ORDERS_URL", "http://new-orders:8082")
+NEW_ORDERS_URL = os.getenv("NEW_ORDERS_URL", "https://personal-dkkhoptv.outsystemscloud.com/NewOrders/rest/OrdersAPI")
 RABBITMQ_URL   = os.getenv("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672/")
 # Must match checkout UI delivery line (default $4.99 → 499 cents)
 DELIVERY_FEE_CENTS = int(os.getenv("DELIVERY_FEE_CENTS", "499"))
@@ -132,15 +132,13 @@ def submit_order(
     # ── Step 4: Create order in New Orders (step 8 in diagram) ─────────────────
     with httpx.Client(timeout=10.0) as client:
         order_resp = client.post(
-            f"{NEW_ORDERS_URL}/api/v1/orders",
+            f"{NEW_ORDERS_URL}",
             json={
-                "customer_id"     : customer_id,
-                "items"           : items,
-                "total_cents"     : total_cents,
-                "dropoff_address" : dropoff_address,
-                "dropoff_lat"     : dropoff_lat,
-                "dropoff_lng"     : dropoff_lng,
-                "payment_id"      : payment_data.get("payment_id", ""),
+                "CustId"     : customer_id,
+                "Items"           : items,
+                "TotalPrice"     : total_cents,
+                "DeliveryAddress" : dropoff_address,
+                "PaymentId"      : payment_data.get("payment_id", ""),
             },
         )
 
@@ -174,33 +172,36 @@ def submit_order(
 
 def get_order_status(order_id: str) -> tuple[dict, int]:
     with httpx.Client(timeout=10.0) as client:
-        resp = client.get(f"{NEW_ORDERS_URL}/api/v1/orders/{order_id}")
+        resp = client.get(f"{NEW_ORDERS_URL}{order_id}")
 
     if resp.status_code == 404:
         return {"error": "Order not found.", "status": "not_found"}, 404
 
     if resp.status_code != 200:
         return {"error": "Failed to fetch order.", "status": "error"}, 502
+    if resp.status_code == 200:
+        return {"status": "ok"}, 200
 
-    data = resp.json().get("order", resp.json())
-    # New Orders DB uses total_amount + delivery_address; normalize for the UI.
-    total_cents = data.get("total_cents")
-    if total_cents is None:
-        total_cents = data.get("total_amount")
-    dropoff = data.get("dropoff_address") or data.get("delivery_address")
-    oid = data.get("order_id") or data.get("id") or order_id
-    if total_cents is not None and not isinstance(total_cents, int):
-        try:
-            total_cents = int(total_cents)
-        except (TypeError, ValueError):
-            total_cents = None
-    return {
-        "order_id"        : oid,
-        "status"          : data.get("status"),
-        "dropoff_address" : dropoff,
-        "total_cents"     : total_cents,
-        "items"           : data.get("items", []),
-        # Supabase/Postgres store these in UTC; show in browser local time on the client
-        "created_at"      : data.get("created_at"),
-        "updated_at"      : data.get("updated_at"),
-    }, 200
+
+    # data = resp.json().get("order", resp.json())
+    # # New Orders DB uses total_amount + delivery_address; normalize for the UI.
+    # total_cents = data.get("total_cents")
+    # if total_cents is None:
+    #     total_cents = data.get("total_amount")
+    # dropoff = data.get("dropoff_address") or data.get("delivery_address")
+    # oid = data.get("order_id") or data.get("id") or order_id
+    # if total_cents is not None and not isinstance(total_cents, int):
+    #     try:
+    #         total_cents = int(total_cents)
+    #     except (TypeError, ValueError):
+    #         total_cents = None
+    # return {
+    #     "order_id"        : oid,
+    #     "status"          : data.get("status"),
+    #     "dropoff_address" : dropoff,
+    #     "total_cents"     : total_cents,
+    #     "items"           : data.get("items", []),
+    #     # Supabase/Postgres store these in UTC; show in browser local time on the client
+    #     "created_at"      : data.get("created_at"),
+    #     "updated_at"      : data.get("updated_at"),
+    # }, 200
