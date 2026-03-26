@@ -34,7 +34,7 @@ export default function OrderListCard({ order }) {
 
       <button
         className="primary-btn"
-        onClick={() => navigate(`/rider/order/${order.id}`)}
+        onClick={() => navigate(`/rider/order/${order.id}`, { state: { order } })}
       >
         View Details
       </button>

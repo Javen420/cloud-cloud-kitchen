@@ -10,5 +10,5 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /service ./cmd/
 FROM alpine:3.19
 RUN apk --no-cache add ca-certificates
 COPY --from=builder /service .
-EXPOSE 8084
+EXPOSE 8088
 CMD ["./service"]

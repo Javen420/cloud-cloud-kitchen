@@ -1,12 +1,34 @@
+import { useEffect, useState } from "react";
 import RiderLayout from "../components/rider/RiderLayout";
 import OrderListCard from "../components/rider/OrderListCard";
-import { mockRiderOrders } from "../data/mockRiderOrders";
+import { getAvailableOrders } from "../services/riderApi";
 
 export default function AvailableOrdersPage() {
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  async function fetchOrders() {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await getAvailableOrders();
+      setOrders(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    fetchOrders();
+  }, []);
+
   return (
     <RiderLayout
       title="Nearby Available Orders"
-      subtitle="These jobs are already payment-confirmed and eligible for rider assignment."
+      subtitle="These jobs are payment-confirmed and eligible for rider assignment."
     >
       <div className="summary-banner">
         <div>
@@ -15,12 +37,29 @@ export default function AvailableOrdersPage() {
         </div>
         <div>
           <span className="middlebar">Available jobs</span>
-          <p>{mockRiderOrders.length}</p>
+          <p>{loading ? "..." : orders.length}</p>
+        </div>
+        <div>
+          <button className="secondary-btn" onClick={fetchOrders} disabled={loading}>
+            {loading ? "Refreshing..." : "Refresh"}
+          </button>
         </div>
       </div>
 
+      {error && (
+        <div className="card" style={{ color: "red", marginBottom: "1rem" }}>
+          <strong>Error:</strong> {error}
+        </div>
+      )}
+
+      {!loading && !error && orders.length === 0 && (
+        <div className="card empty-card">
+          <p>No available orders right now. Check back soon.</p>
+        </div>
+      )}
+
       <div className="card-grid">
-        {mockRiderOrders.map((order) => (
+        {orders.map((order) => (
           <OrderListCard key={order.id} order={order} />
         ))}
       </div>

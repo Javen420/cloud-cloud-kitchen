@@ -33,3 +33,6 @@ class TrackingCache:
         if not data:
             return None
         return json.loads(data)
+
+    async def store_eta(self, order_id: str, eta: dict, ttl: int = 30):
+        await self.redis.set(f"eta:{order_id}", json.dumps(eta), ex=ttl)

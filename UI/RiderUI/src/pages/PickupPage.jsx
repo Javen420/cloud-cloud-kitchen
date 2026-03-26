@@ -1,30 +1,33 @@
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
 import RiderLayout from "../components/rider/RiderLayout";
 import ProgressStepper from "../components/rider/ProgressStepper";
 import DetailRow from "../components/rider/DetailRow";
-import { mockRiderOrders } from "../data/mockRiderOrders";
-import { getMockEtaTracking } from "../services/etaTrackingApi";
+import { getEtaTracking } from "../services/etaTrackingApi";
+import { getDriverId, getCurrentPosition } from "../lib/driverSession";
 
 export default function PickupPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const order = location.state?.order;
+
   const [etaData, setEtaData] = useState(null);
   const [loadingEta, setLoadingEta] = useState(true);
-
-  const order = useMemo(
-    () => mockRiderOrders.find((item) => item.id === id),
-    [id],
-  );
+  const [etaError, setEtaError] = useState(null);
 
   useEffect(() => {
     async function loadEta() {
+      setLoadingEta(true);
+      setEtaError(null);
       try {
-        setLoadingEta(true);
-        const data = await getMockEtaTracking(id, "pickup");
+        const driverId = getDriverId();
+        const { lat, lng } = await getCurrentPosition();
+        const data = await getEtaTracking(id, lat, lng, driverId);
         setEtaData(data);
-      } catch (error) {
-        console.error(error);
+      } catch (err) {
+        setEtaError(err.message);
       } finally {
         setLoadingEta(false);
       }
@@ -34,8 +37,26 @@ export default function PickupPage() {
   }, [id]);
 
   if (!order) {
-    return <div>Order not found.</div>;
+    return (
+      <RiderLayout title="Order Not Found">
+        <div className="card empty-card">
+          <p>Order data unavailable.</p>
+          <button
+            className="primary-btn"
+            onClick={() => navigate("/rider/available-orders")}
+          >
+            Back to Orders
+          </button>
+        </div>
+      </RiderLayout>
+    );
   }
+
+  const etaLabel = etaData
+    ? `${etaData.estimated_minutes} mins`
+    : etaError
+      ? "Unavailable"
+      : "Calculating...";
 
   return (
     <RiderLayout
@@ -54,13 +75,13 @@ export default function PickupPage() {
           <div className="action-row">
             <button
               className="secondary-btn"
-              onClick={() => navigate(`/rider/order/${order.id}`)}
+              onClick={() => navigate(`/rider/order/${order.id}`, { state: { order } })}
             >
               Back
             </button>
             <button
               className="primary-btn"
-              onClick={() => navigate(`/rider/delivery/${order.id}`)}
+              onClick={() => navigate(`/rider/delivery/${order.id}`, { state: { order } })}
             >
               Confirm Picked Up
             </button>
@@ -69,40 +90,37 @@ export default function PickupPage() {
 
         <section className="card route-panel">
           <h3>Route to Pickup</h3>
-          {loadingEta ? (
-            <p>Loading ETA...</p>
-          ) : etaData ? (
-            <>
-              <div className="completion-summary">
-                <div>
-                  <span className="label">From</span>
-                  <p>{etaData.fromLabel}</p>
-                </div>
-                <div>
-                  <span className="label">To</span>
-                  <p>{etaData.toLabel}</p>
-                </div>
-                <div>
-                  <span className="label">Distance</span>
-                  <p>{etaData.distanceKm} km</p>
-                </div>
-                <div>
-                  <span className="label">Duration</span>
-                  <p>{etaData.durationMinutes} mins</p>
-                </div>
-                <div>
-                  <span className="label">Source</span>
-                  <p>{etaData.source}</p>
-                </div>
+          {loadingEta && <p>Loading ETA...</p>}
+          {etaError && <p style={{ color: "orange" }}>ETA unavailable: {etaError}</p>}
+          {etaData && (
+            <div className="completion-summary">
+              <div>
+                <span className="label">ETA to Dropoff</span>
+                <p>{etaLabel}</p>
               </div>
-
-              <div className="fake-map">
-                Backend-provided route preview placeholder
+              <div>
+                <span className="label">Distance</span>
+                <p>
+                  {etaData.distance_km != null
+                    ? `${etaData.distance_km} km`
+                    : "—"}
+                </p>
               </div>
-            </>
-          ) : (
-            <p>ETA unavailable.</p>
+              <div>
+                <span className="label">Source</span>
+                <p>{etaData.source || "—"}</p>
+              </div>
+            </div>
           )}
+
+          <div className="fake-map">
+            <div className="route-box">
+              <div className="route-point start" />
+              <div className="route-line" />
+              <div className="route-point end" />
+            </div>
+            <p className="map-caption">Map preview placeholder</p>
+          </div>
         </section>
       </div>
     </RiderLayout>

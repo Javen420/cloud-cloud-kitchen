@@ -1,53 +1,29 @@
-const mockEtaData = {
-  "ORD-4821": {
-    pickup: {
-      orderId: "ORD-4821",
-      stage: "pickup",
-      distanceKm: 3.8,
-      durationMinutes: 9,
-      fromLabel: "Current rider location",
-      toLabel: "10 Oak Street",
-      source: "redis",
-    },
-    delivery: {
-      orderId: "ORD-4821",
-      stage: "delivery",
-      distanceKm: 5.4,
-      durationMinutes: 13,
-      fromLabel: "10 Oak Street",
-      toLabel: "45 Maple Ave",
-      source: "google-routes",
-    },
-  },
-  "ORD-4822": {
-    pickup: {
-      orderId: "ORD-4822",
-      stage: "pickup",
-      distanceKm: 2.6,
-      durationMinutes: 6,
-      fromLabel: "Current rider location",
-      toLabel: "15 Clementi Road",
-      source: "redis",
-    },
-    delivery: {
-      orderId: "ORD-4822",
-      stage: "delivery",
-      distanceKm: 4.9,
-      durationMinutes: 12,
-      fromLabel: "15 Clementi Road",
-      toLabel: "22 Sunset Way",
-      source: "google-routes",
-    },
-  },
-};
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
-export async function getMockEtaTracking(orderId, stage) {
-  await new Promise((resolve) => setTimeout(resolve, 300));
+/**
+ * Fetches ETA from the ETA Tracking composite service.
+ * The service validates driver ownership via X-Driver-ID header.
+ *
+ * Returns an object with: estimated_minutes, distance_km, source, order_id, driver_id
+ */
+export async function getEtaTracking(orderId, driverLat, driverLng, driverId) {
+  const params = new URLSearchParams({
+    driver_lat: driverLat,
+    driver_lng: driverLng,
+  });
 
-  const orderEta = mockEtaData[orderId];
-  if (!orderEta || !orderEta[stage]) {
-    throw new Error("ETA data not found");
+  const resp = await fetch(`${BASE_URL}/api/v1/eta/${orderId}?${params}`, {
+    headers: {
+      "X-Driver-ID": driverId,
+    },
+  });
+
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => ({}));
+    throw new Error(
+      body.detail?.message || body.message || `ETA fetch failed (${resp.status})`,
+    );
   }
 
-  return orderEta[stage];
+  return resp.json();
 }

@@ -31,3 +31,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="ETA Tracking CS", lifespan=lifespan)
 app.include_router(router)
+
+
+@app.get("/health")
+def health():
+    return {"status": "healthy"}

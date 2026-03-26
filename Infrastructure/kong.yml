@@ -43,6 +43,7 @@ services:
       paths:
         - /api/v1/kitchen/orders
       methods: [ "GET" ]
+      strip_path: false
 
 - name: order-fulfilment-coord
   url: http://order-fulfilment-coord:8084
@@ -51,6 +52,7 @@ services:
       paths:
         - /api/v1/order/fulfil
       methods: [ "POST" ]
+      strip_path: false
 
   # Scenario 3
 
@@ -60,8 +62,9 @@ services:
     - name: assign-driver-routes
       paths:
         - /api/v1/driver/assign
-        - /api/v1/orders/available
-      methods: ["GET", "PUT"]
+        - /api/v1/driver/orders
+      methods: ["GET", "PUT", "OPTIONS"]
+      strip_path: false
 
 #- name: driver-location
 #  url: http://driver-location:8087
@@ -78,7 +81,8 @@ services:
     - name: eta-tracking-routes
       paths:
         - /api/v1/eta
-      methods: ["GET", "POST"]
+      methods: ["GET", "POST", "OPTIONS"]
+      strip_path: false
 
   # Notification
 - name: notification-service
@@ -87,6 +91,7 @@ services:
     - name: notification-route
       paths:
         - /api/notifications
+      strip_path: false
 
 plugins:
 

@@ -59,6 +59,9 @@ async def get_eta(
     if not eta:
         raise HTTPException(502, detail="ETA calculation unavailable")
 
+    # Cache result for 30 s so rapid re-polls skip the Go service
+    await cache.store_eta(order_id, eta, ttl=30)
+
     # 5. Publish notification
     customer_id = await cache.get_customer_id(order_id)
     if customer_id:
