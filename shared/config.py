@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     # Scenario 3
     assign_driver_url: str = "http://localhost:8086"
     eta_tracking_url: str = "http://localhost:8087"
+    eta_calculation_url: str = "http://localhost:8084"
 
     # Notification
     notification_url: str = "http://localhost:8090"
