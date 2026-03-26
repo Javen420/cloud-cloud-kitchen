@@ -123,8 +123,26 @@ services:
       context: ../atomic-services/etaCalculator
     env_file: ../.env
     ports:
-      - "8084:8084"
+      - "8088:8088"
     restart: unless-stopped
+
+  eta-tracking:
+    build:
+      context: ..
+      dockerfile: composite-services/etaTracking/Dockerfile
+    env_file: ../.env
+    environment:
+      REDIS_ADDR: redis:6379
+      REDIS_PASSWORD: ""
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      ETA_CALCULATION_URL: http://eta-calculator:8088
+    ports:
+      - "8087:8087"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
 #notification
 
