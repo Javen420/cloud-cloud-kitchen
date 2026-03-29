@@ -28,3 +28,6 @@ class Order(BaseModel):
 
 class UpdateStatusRequest(BaseModel):
     status : str
+
+class UpdateKitchenRequest(BaseModel):
+    kitchen_id : str

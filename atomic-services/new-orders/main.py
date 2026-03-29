@@ -12,8 +12,8 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.append(str(ROOT_DIR))
 
 from shared.database import get_supabase
-from schemas import CreateOrderRequest, UpdateStatusRequest
-from order import create_order, get_order, list_unassigned, update_order_status
+from schemas import CreateOrderRequest, UpdateStatusRequest, UpdateKitchenRequest
+from order import create_order, get_order, list_unassigned, update_order_status, list_orders_by_status
 
 app = FastAPI(title="New Orders Service", version="2.0.0")
 
@@ -45,6 +45,10 @@ def unassigned(db: Client = Depends(get_db)):
     response, status_code = list_unassigned(db=db)
     return JSONResponse(content=response, status_code=status_code)
 
+@app.get("/api/v1/orders")
+def list_orders(status: str, db: Client = Depends(get_db)):
+    response, status_code = list_orders_by_status(db=db, status=status)
+    return JSONResponse(content=response, status_code=status_code)
 
 @app.get("/api/v1/orders/{order_id}")
 def get_order_by_id(
@@ -64,6 +68,15 @@ def update_status(
     response, status_code = update_order_status(db=db, order_id=order_id, status=payload.status)
     return JSONResponse(content=response, status_code=status_code)
 
+@app.put("/api/v1/orders/{order_id}/kitchen")
+def update_kitchen(
+    order_id: str,
+    payload: UpdateKitchenRequest,
+    db: Client = Depends(get_db),
+):
+    from order import update_kitchen_id
+    response, status_code = update_kitchen_id(db=db, order_id=order_id, kitchen_id=payload.kitchen_id)
+    return JSONResponse(content=response, status_code=status_code)
 
 @app.get("/health")
 def health():
