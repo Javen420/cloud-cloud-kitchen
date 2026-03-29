@@ -112,7 +112,8 @@ async def _consume_and_forward():
                         topic=topic,
                         data={k: str(v) for k, v in payload.items() if v is not None},
                     )
-                    messaging.send(fcm_msg)
+                    response = messaging.send(fcm_msg)
+                    print(f"FCM message sent successfully: {response}")
 
                 except Exception as e:
                     # Retry then DLQ
