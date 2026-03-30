@@ -214,8 +214,9 @@ services:
     env_file: ../.env
     environment:
       PYTHONUNBUFFERED: "1"
+      FIREBASE_SERVICE_ACCOUNT_PATH: /secrets/firebase-service-account.json
     volumes:
-      - ../atomic-services/notifications/firebase-service-account.json:/app/firebase-service-account.json:ro
+      - ../atomic-services/notifications/firebase-service-account.json:/secrets/firebase-service-account.json:ro
     ports:
       - "8090:8090"
     depends_on:

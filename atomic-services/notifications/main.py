@@ -15,6 +15,10 @@ import firebase_admin
 from firebase_admin import credentials, messaging
 
 
+def _log(msg: str):
+    print(msg, flush=True)
+
+
 def _init_firebase():
     if firebase_admin._apps:
         return
@@ -25,6 +29,8 @@ def _init_firebase():
     if sa_json:
         cred = credentials.Certificate(json.loads(sa_json))
     elif sa_path:
+        if not os.path.exists(sa_path):
+            raise RuntimeError(f"FIREBASE_SERVICE_ACCOUNT_PATH not found: {sa_path}")
         cred = credentials.Certificate(sa_path)
     else:
         raise RuntimeError(
@@ -56,8 +62,9 @@ class UnsubscribeRequest(BaseModel):
 
 async def _consume_and_forward():
     connection = await aio_pika.connect_robust(RABBITMQ_URL)
-    print("Connected to RabbitMQ")
+    _log(f"Connected to RabbitMQ (exchange={EXCHANGE_NAME}, queue={QUEUE_NAME})")
     channel = await connection.channel()
+    await channel.set_qos(prefetch_count=10)
 
     # Ensure queues exist for retry/DLQ (works with default exchange publishing)
     await channel.declare_queue(QUEUE_NAME, durable=True)
@@ -133,16 +140,24 @@ async def _consume_and_forward():
 async def _safe_consume():
     try:
         await _consume_and_forward()
+    except asyncio.CancelledError:
+        raise
     except Exception as e:
-        print(f"Consumer task crashed: {e}", flush=True)
+        _log(f"Consumer task crashed: {e}")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    try:
+        _init_firebase()
+        _log("Firebase admin initialized.")
+    except Exception as e:
+        _log(f"Firebase init failed (notifications will not send): {e}")
+
     task = asyncio.create_task(_safe_consume())
     yield
     task.cancel()
-    with contextlib.suppress(Exception):
+    with contextlib.suppress(asyncio.CancelledError, Exception):
         await task
 
 
@@ -177,6 +192,18 @@ def unsubscribe(req: UnsubscribeRequest):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"status": "ok", "topic": topic}
+
+
+@app.post("/api/notifications/test")
+def test_send(order_id: str, message: str = "test"):
+    """
+    Smoke-test endpoint: sends a test payload to topic order_{order_id}.
+    """
+    _init_firebase()
+    topic = f"{PUBLISH_TOPIC_PREFIX}{order_id}"
+    fcm_msg = messaging.Message(topic=topic, data={"kind": "test", "message": message})
+    msg_id = messaging.send(fcm_msg)
+    return {"status": "ok", "topic": topic, "message_id": msg_id}
 
 
 @app.get("/health")

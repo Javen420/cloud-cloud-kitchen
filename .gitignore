@@ -85,6 +85,7 @@ postgres-data/
 *.crt
 secrets/
 firebase-service-account.json
+atomic-services/notifications/firebase-service-account.json
 
 # ========================
 # IDE / OS
