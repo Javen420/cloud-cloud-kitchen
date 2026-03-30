@@ -1,27 +1,26 @@
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
 /**
- * Fetches ETA preview from the Assign Driver CS.
- * The CS handles caching the dropoff and calling ETA Tracking → ETA Calculator.
- *
- * Returns: { estimated_minutes, distance_meters, source, order_id, driver_id }
+ * Caches the dropoff location in the ETA Tracking CS (Redis).
+ * Must be called before getEtaTracking will work for an order.
  */
-export async function getEtaPreview(orderId, driverLat, driverLng, driverId) {
-  const resp = await fetch(`${BASE_URL}/api/v1/driver/eta`, {
+async function initDropoff({ orderId, driverId, customerId, dropoffLat, dropoffLng }) {
+  const resp = await fetch(`${BASE_URL}/api/v1/eta/dropoff`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       order_id: String(orderId),
       driver_id: driverId,
-      driver_lat: driverLat,
-      driver_lng: driverLng,
+      customer_id: customerId || "",
+      dropoff_lat: dropoffLat,
+      dropoff_lng: dropoffLng,
     }),
   });
 
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({}));
     throw new Error(
-      body.error || body.detail?.message || body.message || `ETA fetch failed (${resp.status})`,
+      body.detail?.message || body.message || `Dropoff init failed (${resp.status})`,
     );
   }
 
@@ -29,7 +28,7 @@ export async function getEtaPreview(orderId, driverLat, driverLng, driverId) {
 }
 
 /**
- * Fetches live ETA from the ETA Tracking CS (post-assignment).
+ * Fetches ETA from the ETA Tracking composite service.
  * The service validates driver ownership via X-Driver-ID header.
  *
  * Returns: { estimated_minutes, distance_meters, source, order_id, driver_id }
@@ -54,4 +53,13 @@ export async function getEtaTracking(orderId, driverLat, driverLng, driverId) {
   }
 
   return resp.json();
+}
+
+/**
+ * Ensures dropoff is cached in ETA Tracking CS, then fetches the ETA.
+ * UI → Kong → ETA Tracking CS → ETA Calculator (Go)
+ */
+export async function initAndGetEta({ orderId, driverId, customerId, driverLat, driverLng, dropoffLat, dropoffLng }) {
+  await initDropoff({ orderId, driverId, customerId, dropoffLat, dropoffLng });
+  return getEtaTracking(orderId, driverLat, driverLng, driverId);
 }

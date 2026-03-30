@@ -63,8 +63,7 @@ services:
       paths:
         - /api/v1/driver/assign
         - /api/v1/driver/orders
-        - /api/v1/driver/eta
-      methods: ["GET", "PUT", "POST", "OPTIONS"]
+      methods: ["GET", "PUT", "OPTIONS"]
       strip_path: false
 
 #- name: driver-location

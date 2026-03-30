@@ -30,4 +30,6 @@ class UpdateStatusRequest(BaseModel):
     status : str
 
 class UpdateKitchenRequest(BaseModel):
-    kitchen_id : str
+    kitchen_id      : str
+    kitchen_name    : str | None = None
+    kitchen_address : str | None = None

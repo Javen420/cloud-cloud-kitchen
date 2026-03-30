@@ -3,7 +3,7 @@ import { useNavigate, useParams, useLocation } from "react-router-dom";
 import RiderLayout from "../components/rider/RiderLayout";
 import DetailRow from "../components/rider/DetailRow";
 import { assignDriver } from "../services/riderApi";
-import { getEtaPreview } from "../services/etaTrackingApi";
+import { initAndGetEta } from "../services/etaTrackingApi";
 import { getDriverId, getCurrentPosition } from "../lib/driverSession";
 
 export default function RiderOrderDetailsPage() {
@@ -26,7 +26,15 @@ export default function RiderOrderDetailsPage() {
       try {
         const driverId = getDriverId();
         const { lat, lng } = await getCurrentPosition();
-        const data = await getEtaPreview(id, lat, lng, driverId);
+        const data = await initAndGetEta({
+          orderId: id,
+          driverId,
+          customerId: order.customerName || "",
+          driverLat: lat,
+          driverLng: lng,
+          dropoffLat: order.dropoff_lat,
+          dropoffLng: order.dropoff_lng,
+        });
         setEtaData(data);
       } catch {
         // ETA is non-critical — silently fall back to "Calculating..."
