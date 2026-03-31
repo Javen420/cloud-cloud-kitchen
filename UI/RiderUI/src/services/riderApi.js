@@ -1,17 +1,31 @@
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
+/**
+ * Haversine distance (km) between two lat/lng points.
+ * Used client-side for quick distance estimates on the order list.
+ */
+export function haversineKm(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 /** When Supabase has no dropoff_lat/lng, use a Singapore centroid so assign + ETA still work. */
 const DEFAULT_DROPOFF_LAT = 1.3521;
 const DEFAULT_DROPOFF_LNG = 103.8198;
 
 /**
- * Transforms a raw order record from new-orders/Supabase into the
- * shape expected by all RiderUI components.
+ * Transforms a normalized order from assign-driver CS into the shape
+ * expected by all RiderUI components.
  */
 function normalizeOrder(raw) {
   const itemCount = Array.isArray(raw.items) ? raw.items.length : 0;
   const totalCents = raw.total_amount || 0;
-  // Estimate rider payout as a flat delivery fee portion
   const payoutDollars = parseFloat(((totalCents * 0.1) / 100).toFixed(2));
 
   return {
@@ -23,22 +37,21 @@ function normalizeOrder(raw) {
     etaToPickup: "Calculating...",
     etaToCustomer: "Calculating...",
     totalEta: "Calculating...",
-    pickupStore: "Cloud Kitchen",
-    pickupAddress: "Kitchen address pending assignment",
+    pickupStore: raw.kitchen_name || "Cloud Kitchen",
+    pickupAddress: raw.kitchen_address || "Kitchen address pending assignment",
     pickupInstruction: "Show order code to kitchen staff.",
     dropoffAddress: raw.delivery_address || "Address unavailable",
     customerName: raw.user_id ? raw.user_id.slice(0, 8) : "Customer",
     items: itemCount,
     orderCode: (raw.id || "").slice(-4).toUpperCase() || "----",
-    // raw coordinates for ETA calls
-    dropoff_lat: raw.dropoff_lat ?? null,
-    dropoff_lng: raw.dropoff_lng ?? null,
+    dropoff_lat: raw.dropoff_lat ?? DEFAULT_DROPOFF_LAT,
+    dropoff_lng: raw.dropoff_lng ?? DEFAULT_DROPOFF_LNG,
     status: raw.status,
   };
 }
 
 /**
- * Fetches all pending (driver-unassigned) orders from the Assign Driver CS.
+ * Fetches all pending (driver-unassigned) orders via the Assign Driver CS.
  */
 export async function getAvailableOrders() {
   const resp = await fetch(`${BASE_URL}/api/v1/driver/orders`);

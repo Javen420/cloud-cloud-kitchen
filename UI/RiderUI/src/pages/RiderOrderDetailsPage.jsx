@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import RiderLayout from "../components/rider/RiderLayout";
 import DetailRow from "../components/rider/DetailRow";
 import { assignDriver } from "../services/riderApi";
+import { initAndGetEta } from "../services/etaTrackingApi";
 import { getDriverId, getCurrentPosition } from "../lib/driverSession";
 
 export default function RiderOrderDetailsPage() {
@@ -15,6 +16,34 @@ export default function RiderOrderDetailsPage() {
 
   const [accepting, setAccepting] = useState(false);
   const [acceptError, setAcceptError] = useState(null);
+  const [etaData, setEtaData] = useState(null);
+  const [loadingEta, setLoadingEta] = useState(true);
+
+  useEffect(() => {
+    if (!order) return;
+    async function loadEta() {
+      setLoadingEta(true);
+      try {
+        const driverId = getDriverId();
+        const { lat, lng } = await getCurrentPosition();
+        const data = await initAndGetEta({
+          orderId: id,
+          driverId,
+          customerId: order.customerName || "",
+          driverLat: lat,
+          driverLng: lng,
+          dropoffLat: order.dropoff_lat,
+          dropoffLng: order.dropoff_lng,
+        });
+        setEtaData(data);
+      } catch {
+        // ETA is non-critical — silently fall back to "Calculating..."
+      } finally {
+        setLoadingEta(false);
+      }
+    }
+    loadEta();
+  }, [id, order]);
 
   async function handleAccept() {
     setAccepting(true);
@@ -72,10 +101,22 @@ export default function RiderOrderDetailsPage() {
         <DetailRow label="Customer" value={order.customerName} />
         <DetailRow label="Items" value={`${order.items} items`} />
         <DetailRow label="Payout" value={`$${order.payout.toFixed(2)}`} />
-        <DetailRow label="Distance From Rider" value={order.distanceFromRider} />
-        <DetailRow label="ETA to Pickup" value={order.etaToPickup} />
-        <DetailRow label="ETA to Customer" value={order.etaToCustomer} />
-        <DetailRow label="Total Estimated Trip" value={order.totalEta} />
+        <DetailRow
+          label="Distance From Rider"
+          value={
+            etaData?.distance_meters != null
+              ? `${(etaData.distance_meters / 1000).toFixed(1)} km`
+              : loadingEta ? "Calculating..." : "Unavailable"
+          }
+        />
+        <DetailRow
+          label="ETA to Dropoff"
+          value={
+            etaData?.estimated_minutes != null
+              ? `${etaData.estimated_minutes} mins`
+              : loadingEta ? "Calculating..." : "Unavailable"
+          }
+        />
 
         {acceptError && (
           <p style={{ color: "red", marginTop: "0.5rem" }}>

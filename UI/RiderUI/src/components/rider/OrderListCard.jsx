@@ -26,10 +26,6 @@ export default function OrderListCard({ order }) {
           <span className="label">Distance</span>
           <p>{order.distanceFromRider}</p>
         </div>
-        <div>
-          <span className="label">ETA to Pickup</span>
-          <p>{order.etaToPickup}</p>
-        </div>
       </div>
 
       <button

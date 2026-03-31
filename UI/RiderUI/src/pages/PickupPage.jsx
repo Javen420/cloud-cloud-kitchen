@@ -101,8 +101,8 @@ export default function PickupPage() {
               <div>
                 <span className="label">Distance</span>
                 <p>
-                  {etaData.distance_km != null
-                    ? `${etaData.distance_km} km`
+                  {etaData.distance_meters != null
+                    ? `${(etaData.distance_meters / 1000).toFixed(1)} km`
                     : "—"}
                 </p>
               </div>
