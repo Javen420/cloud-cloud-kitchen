@@ -11,6 +11,9 @@ Your endpoint paths and ports MUST match these exactly.
 
 Scenario 1:
   order-fulfilment       | port 8081 | POST /api/v1/order/submit
+                                      | GET  /api/v1/order/{order_id}
+  payment (atomic)       | port 8089 | POST, GET /api/v1/payment/*
+  menu (external)        | via Kong  | GET /api/v1/menu
 
 Scenario 2:
   assign-kitchen         | port 8093 | background poller only; GET /health (not exposed via Kong)
@@ -24,8 +27,9 @@ UI gateway pattern (match OrderUI/RiderUI/KitchenUI):
 
 Scenario 3:
   assign-driver          | port 8086 | GET, PUT /api/v1/driver/assign
-                                      | GET, PUT /api/v1/orders/available
-  eta-tracking           | port 8088 | GET, POST /api/v1/eta
+                                      | GET      /api/v1/driver/orders
+  eta-tracking           | port 8087 | GET, POST /api/v1/eta/*
+  rider UI               | port 5175 | uses Kong route base /api/v1/driver/* and /api/v1/eta/*
 
 ── Flask example (order-fulfilment on port 8081) ────────
 
@@ -71,7 +75,7 @@ The order flow is fully synchronous (no Stripe redirects/webhooks):
 
 ── Calling other services ───────────────────────────────
 - Use the Docker service name as hostname:
-    requests.get("http://driver-location:8087/api/v1/driver/nearby")
+    requests.get("http://new-orders:8082/api/v1/orders?status=pending")
 - For async, publish to RabbitMQ:
     RabbitMQ URL: os.getenv("RABBITMQ_URL")
 
