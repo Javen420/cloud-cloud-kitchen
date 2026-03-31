@@ -1,0 +1,77 @@
+@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Kitchen portal — aligned with OrderUI `.portal-kitchen` tokens */
+:root {
+  --background: 200 30% 7%;
+  --foreground: 200 10% 93%;
+  --card: 200 25% 11%;
+  --card-foreground: 200 10% 93%;
+  --popover: 200 25% 11%;
+  --popover-foreground: 200 10% 93%;
+  --primary: 189 85% 44%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 200 20% 16%;
+  --secondary-foreground: 200 10% 93%;
+  --muted: 200 15% 20%;
+  --muted-foreground: 200 8% 58%;
+  --accent: 172 70% 38%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 72% 56%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 200 20% 19%;
+  --input: 200 20% 19%;
+  --ring: 189 85% 44%;
+  --radius: 0.75rem;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    font-family:
+      "Plus Jakarta Sans",
+      system-ui,
+      -apple-system,
+      Segoe UI,
+      Roboto,
+      Helvetica,
+      Arial,
+      sans-serif;
+    @apply antialiased bg-background text-foreground;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family:
+      "Outfit",
+      system-ui,
+      -apple-system,
+      Segoe UI,
+      Roboto,
+      Helvetica,
+      Arial,
+      sans-serif;
+    @apply font-bold tracking-tight;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: hsl(var(--background));
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted));
+  border-radius: 4px;
+}
