@@ -248,12 +248,27 @@ services:
       - /app/node_modules
     environment:
       - HOST=0.0.0.0
-      - PORT=5175
+      - PORT=5174
       - VITE_COORDINATE_PROXY_TARGET=http://coordinate-fulfilment:8094
-    command: sh -c "npm install --silent && npm run dev -- --host 0.0.0.0 --port 5175"
+    command: sh -c "npm install --silent && npm run dev -- --host 0.0.0.0 --port 5174"
     ports:
-      - "5175:5175"
+      - "5174:5174"
     depends_on:
       coordinate-fulfilment:
         condition: service_started
+    restart: unless-stopped
+
+  rider:
+    image: node:20-alpine
+    working_dir: /app
+    env_file: ../.env
+    volumes:
+      - ../UI/RiderUI:/app
+      - /app/node_modules
+    environment:
+      - HOST=0.0.0.0
+      - PORT=5175
+    command: sh -c "npm install --silent && npm run dev -- --host 0.0.0.0 --port 5175"
+    ports:
+      - "5175:5175"
     restart: unless-stopped
