@@ -1,0 +1,149 @@
+name: CI
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/ci.yml"
+      - "UI/**"
+      - "shared/**"
+      - "atomic-services/**"
+      - "composite-services/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+      python: ${{ steps.filter.outputs.python }}
+      go: ${{ steps.filter.outputs.go }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Filter paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            frontend:
+              - 'UI/**'
+            python:
+              - 'shared/**'
+              - 'atomic-services/**'
+              - 'composite-services/**'
+            go:
+              - 'atomic-services/etaCalculator/**'
+
+  frontend:
+    name: Frontend (${{ matrix.app }})
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app:
+          - UI/OrderUI
+          - UI/KitchenUI
+          - UI/RiderUI
+
+    defaults:
+      run:
+        working-directory: ${{ matrix.app }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: ${{ matrix.app }}/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint Rider UI
+        if: matrix.app == 'UI/RiderUI'
+        run: npm run lint
+
+  python-services:
+    name: Python (${{ matrix.service }})
+    needs: changes
+    if: needs.changes.outputs.python == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - shared
+          - atomic-services/payment
+          - atomic-services/new-orders
+          - atomic-services/kitchen-assignment
+          - atomic-services/notifications
+          - composite-services/assign-driver
+          - composite-services/assign-kitchen
+          - composite-services/coordinate-fulfilment
+          - composite-services/order-fulfilment
+          - composite-services/etaTracking
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: ${{ matrix.service }}/requirements.txt
+
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
+
+      - name: Install dependencies
+        run: pip install -r ${{ matrix.service }}/requirements.txt
+
+      - name: Validate installed dependencies
+        run: pip check
+
+      - name: Syntax check
+        run: python -m compileall ${{ matrix.service }}
+
+  go-service:
+    name: Go (etaCalculator)
+    needs: changes
+    if: needs.changes.outputs.go == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: atomic-services/etaCalculator
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: atomic-services/etaCalculator/go.mod
+
+      - name: Download modules
+        run: go mod download
