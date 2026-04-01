@@ -68,7 +68,7 @@ async def _fetch_order_by_id(order_id: int) -> tuple[dict | None, int]:
     async with httpx.AsyncClient(timeout=10.0) as client:
         resp = await client.get(
             f"{NEW_ORDERS_URL}/api/v1/order",
-            params={"OrderId": order_id},
+            params={"OrderId": str(order_id)},
         )
 
     if resp.status_code != 200:
@@ -77,11 +77,7 @@ async def _fetch_order_by_id(order_id: int) -> tuple[dict | None, int]:
     body = resp.json()
     if isinstance(body, list):
         return (body[0] if body else None), 200
-    if isinstance(body, dict):
-        if "order" in body and isinstance(body["order"], dict):
-            return body["order"], 200
-        return body, 200
-    return None, 502
+    return body, 200
 
 
 async def _reconcile_created_order_id(
@@ -346,34 +342,19 @@ async def submit_order(
 
 async def get_order_status(order_id: str) -> tuple[dict, int]:
     async with httpx.AsyncClient(timeout=10.0) as client:
-        # OutSystems read endpoint expects integer OrderId query param.
-        try:
-            order_id_query = int(order_id)
-        except (TypeError, ValueError):
-            return {"error": "Invalid order id format.", "status": "error"}, 400
-
+        order_id_query = int(order_id)
         resp = await client.get(
             f"{NEW_ORDERS_URL}/api/v1/order",
-            params={"OrderId": order_id_query},
+            params={"OrderId": str(order_id_query)},
         )
 
-    if resp.status_code == 404:
-        return {"error": "Order not found.", "status": "not_found"}, 404
-
     if resp.status_code != 200:
-        return {"error": "Failed to fetch order.", "status": "error"}, 502
+        return {"error": "Order not found.", "status": "not_found"}, 404
 
     body = resp.json()
     if isinstance(body, list):
-        if not body:
-            return {"error": "Order not found.", "status": "not_found"}, 404
-        order = body[0]
-    elif isinstance(body, dict):
-        if "order" in body and isinstance(body["order"], dict):
-            order = body["order"]
-        else:
-            order = body
+        order = body[0] if body else {}
     else:
-        return {"error": "Unexpected order response format.", "status": "error"}, 502
+        order = body
 
     return _normalize_order_for_ui(order), 200

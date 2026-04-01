@@ -25,18 +25,18 @@ _processed_order_ids: set[str] = set()
 
 async def poll_and_assign():
     async with aiohttp.ClientSession() as session:
-        # Step 1 — fetch pending orders
-        async with session.get(f"{NEW_ORDERS_URL}/api/v1/orders?status=pending") as resp:
+        # Step 1 — fetch pending orders (KitchenAssignStatus empty)
+        async with session.get(f"{NEW_ORDERS_URL}/api/v1/orders") as resp:
             if resp.status != 200:
                 print(f"[assign-kitchen] Failed to fetch pending orders: {resp.status}")
                 return
             body = await resp.json()
-            orders = body.get("orders", [])
+            orders = body if isinstance(body, list) else []
 
         unassigned = [
             o for o in orders
-            if o["id"] not in _processed_order_ids
-            and not o.get("kitchen_id")
+            if str(o["OrderId"]) not in _processed_order_ids
+            and not o.get("KitchenAssignStatus")
         ]
 
         if not unassigned:
@@ -62,7 +62,7 @@ async def poll_and_assign():
                     # Step 2a — find nearest kitchen
                     async with session.post(
                         f"{KITCHEN_ASSIGNMENT_URL}/assign",
-                        json={"order_id": order_id},
+                        json={"order_id": str(order["OrderId"])},
                     ) as assign_resp:
                         assign_body = await assign_resp.json()
                         if assign_resp.status != 200:
@@ -73,14 +73,24 @@ async def poll_and_assign():
                     kitchen_address = assign_body["kitchen_address"]
                     duration        = assign_body["duration_seconds"]
 
-                    # Step 2b — write kitchen_id to order
-                    async with session.put(
-                        f"{NEW_ORDERS_URL}/api/v1/orders/{order_id}/kitchen",
-                        json={"kitchen_id": kitchen_id},
+                    # Step 2b — geocode kitchen → set CLat/CLang, KitchenAssignStatus
+                    from maps_client import MapsClient
+                    maps = MapsClient()
+                    k_lat, k_lng = maps.geocode(kitchen_address)
+                    update_payload = {
+                        "KitchenAssignStatus": f"k{kitchen_id}",
+                        "CLat": str(k_lat),
+                        "CLang": str(k_lng),
+                    }
+
+                    order_id_str = str(order["OrderId"])
+                    async with session.patch(
+                        f"{NEW_ORDERS_URL}/api/v1/orders/{order_id_str}",
+                        json=update_payload,
                     ) as kitchen_resp:
                         kitchen_body = await kitchen_resp.json()
                         if kitchen_resp.status != 200:
-                            raise RuntimeError(kitchen_body.get("error", "Failed to update kitchen_id"))
+                            raise RuntimeError(kitchen_body.get("error", "Failed to update kitchen assignment"))
 
                     # Step 2c — notify customer
                     await channel.default_exchange.publish(

@@ -25,12 +25,12 @@ ALLOWED_STATUSES = {"cooking", "finished_cooking"}
 
 async def poll_cooking_orders():
     async with aiohttp.ClientSession() as session:
-        async with session.get(f"{NEW_ORDERS_URL}/api/v1/orders?status=cooking") as resp:
+        async with session.get(f"{NEW_ORDERS_URL}/api/v1/orders") as resp:
             if resp.status != 200:
                 print(f"[coordinate-fulfilment] Failed to poll orders: {resp.status}")
                 return
             body = await resp.json()
-            orders = body.get("orders", [])
+            orders = [o for o in (body if isinstance(body, list) else []) if o.get("KitchenAssignStatus") == "cooking"]
             print(f"[coordinate-fulfilment] {len(orders)} order(s) currently cooking.")
 
 
@@ -46,10 +46,11 @@ async def update_order_status(order_id: str, status: str) -> tuple[dict, int]:
         return {"error": f"Invalid status '{status}'. Allowed: {ALLOWED_STATUSES}"}, 422
 
     async with aiohttp.ClientSession() as session:
-        # Step 1 — update status in Orders service
-        async with session.put(
-            f"{NEW_ORDERS_URL}/api/v1/orders/{order_id}/status",
-            json={"status": status},
+        # Step 1 — update KitchenAssignStatus in OutSystems
+        update_payload = {"KitchenAssignStatus": status}
+        async with session.patch(
+            f"{NEW_ORDERS_URL}/api/v1/orders/{order_id}",
+            json=update_payload,
         ) as resp:
             body = await resp.json()
             if resp.status != 200:
