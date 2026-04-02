@@ -50,6 +50,8 @@ def assign_kitchen_to_order(
         "total_amount": order.get("total_amount"),
         "items": order.get("items"),
         "delivery_address": delivery_address,
+        "customer_lat": distance_result["customer_lat"],
+        "customer_lng": distance_result["customer_lng"],
         "kitchen_id": nearest_kitchen["id"],
         "kitchen_name": nearest_kitchen["name"],
         "kitchen_address": nearest_kitchen["address"],

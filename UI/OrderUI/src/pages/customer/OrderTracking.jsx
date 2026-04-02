@@ -61,13 +61,21 @@ export default function OrderTracking() {
         await subscribeToOrderTopic({ token, orderId });
         unsubscribe = await onForegroundMessage((payload) => {
           const data = payload?.data || {};
-          if (data.order_id && data.order_id !== orderId) return;
+          if (data.order_id && String(data.order_id) !== String(orderId)) return;
           const cents =
             data.total_cents != null
               ? Number(data.total_cents)
               : data.total_amount != null
                 ? Number(data.total_amount)
                 : undefined;
+          const etaTotal =
+            data.eta_total_minutes != null ? Number(data.eta_total_minutes) : undefined;
+          const etaTravel =
+            data.eta_travel_minutes != null ? Number(data.eta_travel_minutes) : undefined;
+          const etaCook =
+            data.eta_cooking_minutes != null ? Number(data.eta_cooking_minutes) : undefined;
+          const etaDist =
+            data.eta_distance_km != null ? Number(data.eta_distance_km) : undefined;
           setOrder((prev) => ({
             ...(prev || {}),
             order_id: data.order_id || orderId,
@@ -75,6 +83,10 @@ export default function OrderTracking() {
             dropoff_address:
               data.dropoff_address || data.delivery_address || prev?.dropoff_address,
             total_cents: cents !== undefined && !Number.isNaN(cents) ? cents : prev?.total_cents,
+            ...(etaTotal != null && !Number.isNaN(etaTotal) ? { eta_total_minutes: etaTotal } : {}),
+            ...(etaTravel != null && !Number.isNaN(etaTravel) ? { eta_travel_minutes: etaTravel } : {}),
+            ...(etaCook != null && !Number.isNaN(etaCook) ? { eta_cooking_minutes: etaCook } : {}),
+            ...(etaDist != null && !Number.isNaN(etaDist) ? { eta_distance_km: etaDist } : {}),
           }));
         });
       } catch {
@@ -132,6 +144,33 @@ export default function OrderTracking() {
 
           {order && !loading && (
             <div className="space-y-6">
+              <div
+                className={`rounded-3xl border p-5 md:p-6 shadow-sm ${
+                  order.eta_total_minutes != null && !Number.isNaN(Number(order.eta_total_minutes))
+                    ? "border-primary/25 bg-primary/5"
+                    : "border-border bg-card"
+                }`}
+              >
+                <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                  Delivery estimate
+                </h2>
+                {order.eta_total_minutes != null && !Number.isNaN(Number(order.eta_total_minutes)) ? (
+                  <>
+                    <p className="text-2xl font-extrabold text-foreground tabular-nums">
+                      ~{order.eta_total_minutes} minutes
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
+                      Includes cooking and delivery time. Refresh the page to see latest order status.
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    {order.eta_unavailable_reason ||
+                      "Estimated time will updated here shortly. "}
+                  </p>
+                )}
+              </div>
+
               <div className="rounded-3xl border border-border bg-card p-6 md:p-8 shadow-sm">
                 <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-6">
                   Progress

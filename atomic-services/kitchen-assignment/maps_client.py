@@ -112,7 +112,14 @@ class MapsClient:
     ) -> Tuple[int, dict]:
         """
         Geocodes address → haversine nearest kitchen.
-        Returns (index, result_dict) with distance_meters, duration_seconds.
+        Returns (index, result_dict) with distance_meters, duration_seconds,
+        customer_lat, customer_lng (geocoded drop-off used for routing).
         """
         origin = self.geocode(address)
-        return self.nearest(origin, destinations, mode)
+        best_idx, result = self.nearest(origin, destinations, mode)
+        merged = {
+            **result,
+            "customer_lat": origin[0],
+            "customer_lng": origin[1],
+        }
+        return best_idx, merged
