@@ -1,5 +1,6 @@
 import os
 import json
+import math
 import httpx
 
 from shared.AMQP_Publisher import AMQPPublisher
@@ -8,9 +9,17 @@ NEW_ORDERS_URL = os.getenv("NEW_ORDERS_URL", "https://personal-dkkhoptv.outsyste
 ETA_TRACKING_URL = os.getenv("ETA_TRACKING_URL", "http://eta-tracking:8087")
 RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672/")
 
-# Singapore centroid fallback when OutSystems has no coordinates
-DEFAULT_DROPOFF_LAT = 1.3521
+# Fallback coordinates when OutSystems has no values yet
+DEFAULT_DROPOFF_LAT = 1.3521   # Singapore downtown (customer)
 DEFAULT_DROPOFF_LNG = 103.8198
+DEFAULT_KITCHEN_LAT = 1.3350   # Tiong Bahru area (kitchen, ~2km from downtown)
+DEFAULT_KITCHEN_LNG = 103.8050
+
+# Rider payout configuration — all tuneable via env vars
+RIDER_MAX_RADIUS_KM = float(os.getenv("RIDER_MAX_RADIUS_KM", "5.0"))
+RIDER_BASE_FEE      = float(os.getenv("RIDER_BASE_FEE", "3.00"))
+RIDER_PER_KM_RATE   = float(os.getenv("RIDER_PER_KM_RATE", "1.50"))
+RIDER_MIN_PAYOUT    = float(os.getenv("RIDER_MIN_PAYOUT", "4.99"))
 
 publisher = AMQPPublisher()
 
@@ -18,8 +27,36 @@ publisher = AMQPPublisher()
 http = httpx.AsyncClient(timeout=10.0)
 
 
+# ── Haversine distance ───────────────────────────────────────────────────────
+
+def haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    """Great-circle distance in km between two lat/lng points."""
+    R = 6371  # Earth radius in km
+    to_rad = math.radians
+    d_lat = to_rad(lat2 - lat1)
+    d_lng = to_rad(lng2 - lng1)
+    a = (math.sin(d_lat / 2) ** 2
+         + math.cos(to_rad(lat1)) * math.cos(to_rad(lat2))
+         * math.sin(d_lng / 2) ** 2)
+    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
+def calculate_payout(pickup_km: float, delivery_km: float) -> float:
+    """Distance-based rider payout: base fee + per-km rate for both legs."""
+    total_km = pickup_km + delivery_km
+    payout = RIDER_BASE_FEE + (RIDER_PER_KM_RATE * total_km)
+    return round(max(payout, RIDER_MIN_PAYOUT), 2)
+
+
+# ── Order normalisation ──────────────────────────────────────────────────────
+
 def _normalize_outsystems_order(raw: dict) -> dict:
-    """Map OutSystems PascalCase fields to the snake_case contract the UI expects."""
+    """Map OutSystems PascalCase fields to the snake_case contract the UI expects.
+
+    Kitchen and coordinate fields use ``or`` defaults so that when OutSystems
+    adds KitchenId / KitchenLat / KitchenLng / etc., they flow through
+    automatically with zero code changes.
+    """
     items_raw = raw.get("Items", "[]")
     try:
         items = json.loads(items_raw) if isinstance(items_raw, str) else items_raw
@@ -33,19 +70,32 @@ def _normalize_outsystems_order(raw: dict) -> dict:
         "total_amount": raw.get("TotalPrice", 0),
         "items": items if isinstance(items, list) else [],
         "status": (raw.get("KitchenAssignStatus") or "pending").lower(),
-        "kitchen_id": None,
-        "dropoff_lat": None,
-        "dropoff_lng": None,
+        "kitchen_id": raw.get("KitchenId") or None,
+        "kitchen_name": raw.get("KitchenName") or "Cloud Kitchen",
+        "kitchen_address": raw.get("KitchenAddress") or "Kitchen address pending",
+        "kitchen_lat": float(raw.get("KitchenLat") or DEFAULT_KITCHEN_LAT),
+        "kitchen_lng": float(raw.get("KitchenLng") or DEFAULT_KITCHEN_LNG),
+        "dropoff_lat": float(raw.get("CLat") or DEFAULT_DROPOFF_LAT),
+        "dropoff_lng": float(raw.get("CLang") or DEFAULT_DROPOFF_LNG),
         "payment_id": raw.get("PaymentId", ""),
     }
 
 
-async def get_available_orders() -> tuple[dict, int]:
+async def get_available_orders(
+    rider_lat: float | None = None,
+    rider_lng: float | None = None,
+) -> tuple[dict, int]:
     """
     Fetches all pending (unassigned) orders from the OutSystems Orders API.
     Filters to pending orders and normalises field names for the UI.
+
+    When *rider_lat* / *rider_lng* are supplied the response is enriched with:
+      - pickup_distance_km   (rider → kitchen)
+      - delivery_distance_km (kitchen → customer)
+      - payout               (distance-based)
+    and orders beyond RIDER_MAX_RADIUS_KM from the kitchen are excluded.
     """
-    resp = await http.get(f"{NEW_ORDERS_URL}/api/v1/orders")
+    resp = await http.get(f"{NEW_ORDERS_URL}/GetPending")
 
     if resp.status_code != 200:
         return {"error": "Failed to fetch available orders."}, 502
@@ -60,6 +110,29 @@ async def get_available_orders() -> tuple[dict, int]:
         for o in raw_orders
         if (o.get("KitchenAssignStatus") or "pending").lower() == "pending"
     ]
+
+    # Enrich with distances, payout, and radius filter when rider location known
+    if rider_lat is not None and rider_lng is not None:
+        enriched = []
+        for order in orders:
+            pickup_km = round(
+                haversine_km(rider_lat, rider_lng, order["kitchen_lat"], order["kitchen_lng"]),
+                2,
+            )
+            # Skip orders outside the rider's radius
+            if pickup_km > RIDER_MAX_RADIUS_KM:
+                continue
+
+            delivery_km = round(
+                haversine_km(order["kitchen_lat"], order["kitchen_lng"],
+                             order["dropoff_lat"], order["dropoff_lng"]),
+                2,
+            )
+            order["pickup_distance_km"] = pickup_km
+            order["delivery_distance_km"] = delivery_km
+            order["payout"] = calculate_payout(pickup_km, delivery_km)
+            enriched.append(order)
+        orders = enriched
 
     return {"orders": orders}, 200
 
@@ -83,7 +156,7 @@ async def assign_driver(
 
     # ── Step 1: Fetch order details ──────────────────────────────────────────
     order_resp = await http.get(
-        f"{NEW_ORDERS_URL}/api/v1/order",
+        f"{NEW_ORDERS_URL}/GetOrder",
         params={"OrderId": order_id},
     )
 
@@ -120,9 +193,10 @@ async def assign_driver(
 
     # ── Step 3: Update order status in OutSystems ────────────────────────────
     status_resp = await http.patch(
-        f"{NEW_ORDERS_URL}/api/v1/orders/{order_id}",
-        json="driver_assigned",
-        headers={"Content-Type": "application/json"},
+        f"{NEW_ORDERS_URL}/UpdateKitchenStatus",
+        params={"OrderId": order_id},
+        content='"driver_assigned"',
+        headers={"Content-Type": "text/plain"},
     )
 
     if status_resp.status_code != 200:

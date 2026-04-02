@@ -1,7 +1,7 @@
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -31,8 +31,13 @@ app.add_middleware(
 
 
 @app.get("/api/v1/driver/orders")
-async def available_orders():
-    response, status_code = await get_available_orders()
+async def available_orders(
+    rider_lat: float | None = Query(None),
+    rider_lng: float | None = Query(None),
+):
+    response, status_code = await get_available_orders(
+        rider_lat=rider_lat, rider_lng=rider_lng,
+    )
     return JSONResponse(content=response, status_code=status_code)
 
 
