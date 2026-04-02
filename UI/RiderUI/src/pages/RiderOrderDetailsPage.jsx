@@ -99,13 +99,39 @@ export default function RiderOrderDetailsPage() {
         <DetailRow label="Pickup Address" value={order.pickupAddress} />
         <DetailRow label="Drop-off Address" value={order.dropoffAddress} />
         <DetailRow label="Customer" value={order.customerName} />
-        <DetailRow label="Items" value={`${order.items} items`} />
+        <DetailRow
+          label="Items"
+          value={
+            order.itemsList && order.itemsList.length > 0
+              ? (
+                <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
+                  {order.itemsList.map((item, i) => (
+                    <li key={i}>
+                      {item.quantity}x {item.Name}{" "}
+                      {item.price != null && (
+                        <span className="muted">(${Number(item.price).toFixed(2)} ea)</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )
+              : `${order.items} items`
+          }
+        />
         <DetailRow label="Payout" value={`$${order.payout.toFixed(2)}`} />
         <DetailRow
-          label="Distance From Rider"
+          label="To Pickup"
           value={
-            etaData?.distance_meters != null
-              ? `${(etaData.distance_meters / 1000).toFixed(1)} km`
+            order.pickupDistanceKm != null
+              ? `${order.pickupDistanceKm} km`
+              : loadingEta ? "Calculating..." : "Unavailable"
+          }
+        />
+        <DetailRow
+          label="To Drop-off"
+          value={
+            order.deliveryDistanceKm != null
+              ? `${order.deliveryDistanceKm} km`
               : loadingEta ? "Calculating..." : "Unavailable"
           }
         />

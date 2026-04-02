@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import RiderLayout from "../components/rider/RiderLayout";
 import OrderListCard from "../components/rider/OrderListCard";
-import { getAvailableOrders, haversineKm } from "../services/riderApi";
+import { getAvailableOrders } from "../services/riderApi";
 import { getCurrentPosition } from "../lib/driverSession";
 
 export default function AvailableOrdersPage() {
@@ -13,16 +13,9 @@ export default function AvailableOrdersPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await getAvailableOrders();
       const { lat, lng } = await getCurrentPosition();
-      const withDistance = data.map((o) => ({
-        ...o,
-        distanceFromRider:
-          o.dropoff_lat != null && o.dropoff_lng != null
-            ? `${haversineKm(lat, lng, o.dropoff_lat, o.dropoff_lng).toFixed(1)} km`
-            : "—",
-      }));
-      setOrders(withDistance);
+      const data = await getAvailableOrders(lat, lng);
+      setOrders(data);
     } catch (err) {
       setError(err.message);
     } finally {

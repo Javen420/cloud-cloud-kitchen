@@ -23,8 +23,12 @@ export default function OrderListCard({ order }) {
           <p>{order.dropoffAddress}</p>
         </div>
         <div>
-          <span className="label">Distance</span>
-          <p>{order.distanceFromRider}</p>
+          <span className="label">To Pickup</span>
+          <p>{order.pickupDistanceKm != null ? `${order.pickupDistanceKm} km` : "—"}</p>
+        </div>
+        <div>
+          <span className="label">To Drop-off</span>
+          <p>{order.deliveryDistanceKm != null ? `${order.deliveryDistanceKm} km` : "—"}</p>
         </div>
       </div>
 
