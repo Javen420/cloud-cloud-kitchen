@@ -1,9 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import RiderLayout from "../components/rider/RiderLayout";
 import DetailRow from "../components/rider/DetailRow";
 import { assignDriver } from "../services/riderApi";
-import { initAndGetEta } from "../services/etaTrackingApi";
 import { getDriverId, getCurrentPosition } from "../lib/driverSession";
 
 export default function RiderOrderDetailsPage() {
@@ -16,35 +15,6 @@ export default function RiderOrderDetailsPage() {
 
   const [accepting, setAccepting] = useState(false);
   const [acceptError, setAcceptError] = useState(null);
-  const [etaData, setEtaData] = useState(null);
-  const [loadingEta, setLoadingEta] = useState(true);
-
-  useEffect(() => {
-    if (!order) return;
-    async function loadEta() {
-      setLoadingEta(true);
-      try {
-        const driverId = getDriverId();
-        const { lat, lng } = await getCurrentPosition();
-        const data = await initAndGetEta({
-          orderId: id,
-          driverId,
-          customerId: order.customerName || "",
-          driverLat: lat,
-          driverLng: lng,
-          dropoffLat: order.dropoff_lat,
-          dropoffLng: order.dropoff_lng,
-        });
-        setEtaData(data);
-      } catch {
-        // ETA is non-critical — silently fall back to "Calculating..."
-      } finally {
-        setLoadingEta(false);
-      }
-    }
-    loadEta();
-  }, [id, order]);
-
   async function handleAccept() {
     setAccepting(true);
     setAcceptError(null);
@@ -124,7 +94,7 @@ export default function RiderOrderDetailsPage() {
           value={
             order.pickupDistanceKm != null
               ? `${order.pickupDistanceKm} km`
-              : loadingEta ? "Calculating..." : "Unavailable"
+              : "Calculating..."
           }
         />
         <DetailRow
@@ -132,16 +102,12 @@ export default function RiderOrderDetailsPage() {
           value={
             order.deliveryDistanceKm != null
               ? `${order.deliveryDistanceKm} km`
-              : loadingEta ? "Calculating..." : "Unavailable"
+              : "Calculating..."
           }
         />
         <DetailRow
           label="ETA to Dropoff"
-          value={
-            etaData?.estimated_minutes != null
-              ? `${etaData.estimated_minutes} mins`
-              : loadingEta ? "Calculating..." : "Unavailable"
-          }
+          value="Calculated after assignment"
         />
 
         {acceptError && (

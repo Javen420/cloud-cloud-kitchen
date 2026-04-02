@@ -2,6 +2,7 @@ import os
 import uuid
 import json
 import httpx
+from urllib.parse import urlsplit, urlunsplit
 
 from shared.AMQP_Publisher import AMQPPublisher
 
@@ -16,6 +17,31 @@ DELIVERY_FEE_CENTS = int(os.getenv("DELIVERY_FEE_CENTS", "499"))
 
 # Shared async publisher — initialised in main.py lifespan
 publisher = AMQPPublisher()
+
+
+def _sanitize_base_url(url: str) -> str:
+    parts = urlsplit(url.strip())
+    return urlunsplit((parts.scheme, parts.netloc, parts.path.rstrip("/"), "", ""))
+
+
+SANITIZED_NEW_ORDERS_URL = _sanitize_base_url(NEW_ORDERS_URL)
+
+
+async def _request_first_success(
+    client: httpx.AsyncClient,
+    method: str,
+    candidates: list[str],
+    **kwargs,
+) -> httpx.Response:
+    last_response = None
+
+    for url in candidates:
+        resp = await client.request(method, url, **kwargs)
+        if resp.status_code not in (404, 405):
+            return resp
+        last_response = resp
+
+    return last_response
 
 
 async def publish_notification(user_id: str, order_id: str, status: str, message: str):
@@ -66,8 +92,13 @@ def _normalize_order_for_ui(raw: dict) -> dict:
 
 async def _fetch_order_by_id(order_id: int) -> tuple[dict | None, int]:
     async with httpx.AsyncClient(timeout=10.0) as client:
-        resp = await client.get(
-            f"{NEW_ORDERS_URL}/api/v1/order",
+        resp = await _request_first_success(
+            client,
+            "GET",
+            [
+                f"{SANITIZED_NEW_ORDERS_URL}/GetOrder",
+                f"{SANITIZED_NEW_ORDERS_URL}/api/v1/order",
+            ],
             params={"OrderId": str(order_id)},
         )
 
@@ -92,7 +123,15 @@ async def _reconcile_created_order_id(
     Reconcile by querying the orders list and matching by strong signature.
     """
     async with httpx.AsyncClient(timeout=10.0) as client:
-        resp = await client.get(f"{NEW_ORDERS_URL}/api/v1/orders")
+        resp = await _request_first_success(
+            client,
+            "GET",
+            [
+                f"{SANITIZED_NEW_ORDERS_URL}/GetAll",
+                f"{SANITIZED_NEW_ORDERS_URL}/GetPending",
+                f"{SANITIZED_NEW_ORDERS_URL}/api/v1/orders",
+            ],
+        )
 
     if resp.status_code != 200:
         return None
@@ -218,16 +257,23 @@ async def submit_order(
 
     # ── Step 4: Create order in OutSystems New Orders ──────────────────────────
     async with httpx.AsyncClient(timeout=10.0) as client:
-        order_resp = await client.post(
-            f"{NEW_ORDERS_URL}/api/v1/orders",
-            json={
-                "CustId": customer_id,
-                # OutSystems OrderRequest expects Items as a JSON string.
-                "Items": json.dumps(items),
-                "TotalPrice": total_cents,
-                "DeliveryAddress": dropoff_address,
-                "PaymentId": payment_data.get("payment_id", ""),
-            },
+        order_payload = {
+            "CustId": customer_id,
+            # OutSystems OrderRequest expects Items as a JSON string.
+            "Items": json.dumps(items),
+            "TotalPrice": total_cents,
+            "DeliveryAddress": dropoff_address,
+            "PaymentId": payment_data.get("payment_id", ""),
+        }
+        order_resp = await _request_first_success(
+            client,
+            "POST",
+            [
+                f"{SANITIZED_NEW_ORDERS_URL}/CreateOrder",
+                SANITIZED_NEW_ORDERS_URL,
+                f"{SANITIZED_NEW_ORDERS_URL}/api/v1/orders",
+            ],
+            json=order_payload,
         )
     outsystems_debug = {
         "status_code": order_resp.status_code,
@@ -343,8 +389,13 @@ async def submit_order(
 async def get_order_status(order_id: str) -> tuple[dict, int]:
     async with httpx.AsyncClient(timeout=10.0) as client:
         order_id_query = int(order_id)
-        resp = await client.get(
-            f"{NEW_ORDERS_URL}/api/v1/order",
+        resp = await _request_first_success(
+            client,
+            "GET",
+            [
+                f"{SANITIZED_NEW_ORDERS_URL}/GetOrder",
+                f"{SANITIZED_NEW_ORDERS_URL}/api/v1/order",
+            ],
             params={"OrderId": str(order_id_query)},
         )
 

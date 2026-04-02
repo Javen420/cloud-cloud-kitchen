@@ -38,6 +38,7 @@ def assign_kitchen(
     response, status_code = assign_kitchen_to_order(
         db=db,
         order_id=payload.order_id,
+        delivery_address=payload.delivery_address,
     )
     return JSONResponse(content=response, status_code=status_code)
 

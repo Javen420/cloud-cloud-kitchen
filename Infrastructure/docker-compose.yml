@@ -125,7 +125,7 @@ services:
     environment:
       PYTHONUNBUFFERED: "1"
       KITCHEN_ASSIGNMENT_URL: http://kitchen-assignment:8091
-      NEW_ORDERS_URL: http://new-orders:8082
+      NEW_ORDERS_URL: https://personal-dkkhoptv.outsystemscloud.com/NewOrders/rest/OrdersAPI
       RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASS}@rabbitmq:5672/
       POLL_INTERVAL_SECONDS: "10"
     ports:
@@ -145,7 +145,7 @@ services:
     env_file: ../.env
     environment:
       PYTHONUNBUFFERED: "1"
-      NEW_ORDERS_URL: http://new-orders:8082
+      NEW_ORDERS_URL: https://personal-dkkhoptv.outsystemscloud.com/NewOrders/rest/OrdersAPI
       RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASS}@rabbitmq:5672/
       POLL_INTERVAL_SECONDS: "10"
     ports:
@@ -231,6 +231,7 @@ services:
     environment:
       - HOST=0.0.0.0
       - PORT=5173
+      - VITE_KONG_PROXY_TARGET=http://kong:8000
     command: sh -c "npm install --silent && npm run dev -- --host 0.0.0.0 --port 5173"
     ports:
       - "5173:5173"

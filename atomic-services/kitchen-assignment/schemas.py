@@ -3,7 +3,8 @@ from typing import Optional
 
 
 class AssignKitchenRequest(BaseModel):
-    order_id: str
+    order_id: str | None = None
+    delivery_address: str | None = None
 
 
 class AddKitchenRequest(BaseModel):

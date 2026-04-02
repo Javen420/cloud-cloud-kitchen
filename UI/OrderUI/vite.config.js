@@ -9,6 +9,12 @@ export default defineConfig(({ mode }) => {
   const outsystemsMenuUrl =
     env.OUTSYSTEMS_MENU_URL ||
     "https://personal-dkkhoptv.outsystemscloud.com/MenuService/rest/MenuService/Menu";
+  const apiTarget =
+    process.env.VITE_KONG_PROXY_TARGET ||
+    env.VITE_KONG_PROXY_TARGET ||
+    process.env.VITE_API_BASE_URL ||
+    env.VITE_API_BASE_URL ||
+    "http://localhost:8000";
 
   return {
     plugins: [react()],
@@ -24,10 +30,7 @@ export default defineConfig(({ mode }) => {
       port: 5173,
       proxy: {
         "/api": {
-          target:
-            process.env.VITE_API_BASE_URL ||
-            env.VITE_API_BASE_URL ||
-            "http://localhost:8000",
+          target: apiTarget,
           changeOrigin: true,
         },
       },

@@ -27,6 +27,12 @@ function filterAssignedPending(orders) {
   return orders.filter((o) => o.kitchen_id);
 }
 
+function numericOrderId(id) {
+  if (typeof id !== "string") return Number.NEGATIVE_INFINITY;
+  const parsed = Number.parseInt(id, 10);
+  return Number.isNaN(parsed) ? Number.NEGATIVE_INFINITY : parsed;
+}
+
 function formatItems(items) {
   if (!Array.isArray(items)) return "—";
   const line = items
@@ -69,7 +75,9 @@ function sortByRecent(orders) {
   return [...orders].sort((a, b) => {
     const ta = new Date(a.updated_at || a.created_at || 0).getTime();
     const tb = new Date(b.updated_at || b.created_at || 0).getTime();
-    return tb - ta;
+    if (ta !== tb) return tb - ta;
+
+    return numericOrderId(b.id) - numericOrderId(a.id);
   });
 }
 
@@ -127,9 +135,9 @@ export default function KitchenDashboardPage() {
       ]);
       setOnline(health);
 
-      const pendingK = filterAssignedPending(data.pending || []);
-      const cooking = data.cooking || [];
-      const ready = data.finished_cooking || [];
+      const pendingK = sortByRecent(filterAssignedPending(data.pending || []));
+      const cooking = sortByRecent(data.cooking || []);
+      const ready = sortByRecent(data.finished_cooking || []);
 
       setBucket({
         pending: pendingK,

@@ -1,42 +1,64 @@
-"""
-orchestrator.py — Assign Kitchen composite polling logic.
-
-Every POLL_INTERVAL seconds:
-  1. GET  /api/v1/orders?status=pending   → Orders service
-  2. For each order without a kitchen_id:
-     a. POST /assign                      → Kitchen Assignment atomic
-     b. PUT  /api/v1/orders/{id}/kitchen  → Orders service (write kitchen_id)
-     c. Publish to RabbitMQ               → Notify customer of assignment
-"""
-
-import os
 import json
+import os
+from urllib.parse import urlsplit, urlunsplit
+
 import aiohttp
 import aio_pika
 from aio_pika import DeliveryMode, Message
 
-NEW_ORDERS_URL         = os.getenv("NEW_ORDERS_URL", "http://new-orders:8082")
+
+NEW_ORDERS_URL = os.getenv(
+    "NEW_ORDERS_URL",
+    "https://personal-dkkhoptv.outsystemscloud.com/NewOrders/rest/OrdersAPI",
+)
 KITCHEN_ASSIGNMENT_URL = os.getenv("KITCHEN_ASSIGNMENT_URL", "http://kitchen-assignment:8091")
-RABBITMQ_URL           = os.getenv("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672/")
-NOTIFICATION_QUEUE     = os.getenv("NOTIFICATION_QUEUE", "notifications")
+RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672/")
+NOTIFICATION_QUEUE = os.getenv("NOTIFICATION_QUEUE", "notifications")
 
 _processed_order_ids: set[str] = set()
 
 
+def _sanitize_base_url(url: str) -> str:
+    parts = urlsplit(url.strip())
+    return urlunsplit((parts.scheme, parts.netloc, parts.path.rstrip("/"), "", ""))
+
+
+SANITIZED_NEW_ORDERS_URL = _sanitize_base_url(NEW_ORDERS_URL)
+
+
+def _normalize_outsystems_order(raw: dict) -> dict:
+    kitchen_id = raw.get("KitchenId")
+    if str(kitchen_id).strip() in {"", "0", "None", "null"}:
+        kitchen_id = None
+
+    return {
+        "order_id": str(raw.get("OrderId", "")),
+        "delivery_address": raw.get("DeliveryAddress", ""),
+        "status": (raw.get("KitchenAssignStatus") or "pending").lower(),
+        "kitchen_id": kitchen_id,
+        "kitchen_name": raw.get("KitchenName") or "",
+        "kitchen_address": raw.get("KitchenAddress") or "",
+        "customer_id": raw.get("CustId", ""),
+        "total_amount": int(raw.get("TotalPrice", 0) or 0),
+    }
+
+
 async def poll_and_assign():
     async with aiohttp.ClientSession() as session:
-        # Step 1 — fetch pending orders (KitchenAssignStatus empty)
-        async with session.get(f"{NEW_ORDERS_URL}/api/v1/orders") as resp:
+        async with session.get(f"{SANITIZED_NEW_ORDERS_URL}/GetPending") as resp:
             if resp.status != 200:
                 print(f"[assign-kitchen] Failed to fetch pending orders: {resp.status}")
                 return
             body = await resp.json()
-            orders = body if isinstance(body, list) else []
+            raw_orders = body if isinstance(body, list) else []
 
+        orders = [_normalize_outsystems_order(o) for o in raw_orders]
         unassigned = [
             o for o in orders
-            if str(o["OrderId"]) not in _processed_order_ids
-            and not o.get("KitchenAssignStatus")
+            if o["order_id"]
+            and o["order_id"] not in _processed_order_ids
+            and o["status"] == "pending"
+            and not o["kitchen_id"]
         ]
 
         if not unassigned:
@@ -50,8 +72,8 @@ async def poll_and_assign():
             await channel.declare_queue(NOTIFICATION_QUEUE, durable=True)
 
             for order in unassigned:
-                order_id         = order["id"]
-                delivery_address = order.get("delivery_address") or order.get("dropoff_address")
+                order_id = order["order_id"]
+                delivery_address = order["delivery_address"]
 
                 if not delivery_address:
                     print(f"[assign-kitchen] Order {order_id} missing delivery address, skipping.")
@@ -59,50 +81,54 @@ async def poll_and_assign():
                     continue
 
                 try:
-                    # Step 2a — find nearest kitchen
                     async with session.post(
                         f"{KITCHEN_ASSIGNMENT_URL}/assign",
-                        json={"order_id": str(order["OrderId"])},
+                        json={
+                            "order_id": order_id,
+                            "delivery_address": delivery_address,
+                        },
                     ) as assign_resp:
                         assign_body = await assign_resp.json()
                         if assign_resp.status != 200:
                             raise RuntimeError(assign_body.get("error", "Assignment failed"))
 
-                    kitchen_id      = assign_body["kitchen_id"]
-                    kitchen_name    = assign_body["kitchen_name"]
-                    kitchen_address = assign_body["kitchen_address"]
-                    duration        = assign_body["duration_seconds"]
-
-                    # Step 2b — geocode kitchen → set CLat/CLang, KitchenAssignStatus
-                    from maps_client import MapsClient
-                    maps = MapsClient()
-                    k_lat, k_lng = maps.geocode(kitchen_address)
                     update_payload = {
-                        "KitchenAssignStatus": f"k{kitchen_id}",
-                        "CLat": str(k_lat),
-                        "CLang": str(k_lng),
+                        "KitchenId": str(assign_body["kitchen_id"]),
+                        "KitchenLong": str(assign_body.get("kitchen_lng", "")),
+                        "KitchenLat": str(assign_body.get("kitchen_lat", "")),
+                        "KitchenAddress": assign_body["kitchen_address"],
+                        "KitchenAssignStatus": "pending",
                     }
 
-                    order_id_str = str(order["OrderId"])
                     async with session.patch(
-                        f"{NEW_ORDERS_URL}/api/v1/orders/{order_id_str}",
+                        f"{SANITIZED_NEW_ORDERS_URL}/UpdateKitchenStatus",
+                        params={"OrderId": order_id},
                         json=update_payload,
                     ) as kitchen_resp:
-                        kitchen_body = await kitchen_resp.json()
                         if kitchen_resp.status != 200:
-                            raise RuntimeError(kitchen_body.get("error", "Failed to update kitchen assignment"))
+                            try:
+                                kitchen_body = await kitchen_resp.json()
+                            except Exception:
+                                kitchen_body = {"error": await kitchen_resp.text()}
+                            raise RuntimeError(
+                                kitchen_body.get("error")
+                                or kitchen_body.get("Message")
+                                or "Failed to update kitchen assignment"
+                            )
 
-                    # Step 2c — notify customer
                     await channel.default_exchange.publish(
                         Message(
-                            body=json.dumps({
-                                "order_id":         order_id,
-                                "status":           "pending",
-                                "kitchen_name":     kitchen_name,
-                                "kitchen_address":  kitchen_address,
-                                "duration_seconds": duration,
-                                "delivery_address": delivery_address,
-                            }).encode(),
+                            body=json.dumps(
+                                {
+                                    "order_id": order_id,
+                                    "status": "pending",
+                                    "kitchen_id": str(assign_body["kitchen_id"]),
+                                    "kitchen_name": assign_body["kitchen_name"],
+                                    "kitchen_address": assign_body["kitchen_address"],
+                                    "duration_seconds": assign_body["duration_seconds"],
+                                    "delivery_address": delivery_address,
+                                }
+                            ).encode(),
                             content_type="application/json",
                             delivery_mode=DeliveryMode.PERSISTENT,
                         ),
@@ -110,7 +136,7 @@ async def poll_and_assign():
                     )
 
                     _processed_order_ids.add(order_id)
-                    print(f"[assign-kitchen] Order {order_id} → kitchen {kitchen_name}")
+                    print(f"[assign-kitchen] Order {order_id} -> kitchen {assign_body['kitchen_name']}")
 
                 except Exception as exc:
                     print(f"[assign-kitchen] Failed to process order {order_id}: {exc}")

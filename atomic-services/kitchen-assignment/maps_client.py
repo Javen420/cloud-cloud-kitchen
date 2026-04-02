@@ -5,7 +5,7 @@ from typing import List, Tuple
 
 GOOGLE_MAPS_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY", "")
 GEOCODING_URL       = "https://maps.googleapis.com/maps/api/geocode/json"
-from .haversine import distance_km, estimate_duration_seconds, distance_result
+from haversine import distance_km, estimate_duration_seconds, distance_result
 
 
 
