@@ -6,13 +6,14 @@ import {
   updateOrderStatus,
 } from "../api/coordinateApi";
 
-const STATUSES = ["pending", "cooking", "finished_cooking"];
+const STATUSES = ["pending", "cooking", "finished_cooking", "driver_assigned"];
 
 const TABS = [
   { id: "all", label: "All" },
   { id: "pending", label: "New" },
   { id: "cooking", label: "Preparing" },
   { id: "finished_cooking", label: "Ready" },
+  { id: "driver_assigned", label: "Picked Up" },
 ];
 
 const FALLBACK_KITCHEN_ID = import.meta.env.VITE_KITCHEN_ID || null;
@@ -125,6 +126,7 @@ export default function KitchenDashboardPage() {
     pending: [],
     cooking: [],
     finished_cooking: [],
+    driver_assigned: [],
   });
   const [kitchenId, setKitchenId] = useState(null);
   const [kitchenOptions, setKitchenOptions] = useState([]);
@@ -167,11 +169,15 @@ export default function KitchenDashboardPage() {
       const ready = sortByRecent(
         filterByKitchenId(data.finished_cooking || [], selectedKitchenId),
       );
+      const pickedUp = sortByRecent(
+        filterByKitchenId(data.driver_assigned || [], selectedKitchenId),
+      );
 
       setBucket({
         pending,
         cooking,
         finished_cooking: ready,
+        driver_assigned: pickedUp,
       });
       setKitchenId(selectedKitchenId);
 
@@ -204,17 +210,19 @@ export default function KitchenDashboardPage() {
       new: bucket.pending.length,
       preparing: bucket.cooking.length,
       ready: bucket.finished_cooking.length,
+      pickedUp: bucket.driver_assigned.length,
     }),
     [bucket],
   );
 
   const displayOrders = useMemo(() => {
-    const merged = [...bucket.pending, ...bucket.cooking, ...bucket.finished_cooking];
+    const merged = [...bucket.pending, ...bucket.cooking, ...bucket.finished_cooking, ...bucket.driver_assigned];
     const sorted = sortByRecent(merged);
     if (tab === "all") return sorted;
     if (tab === "pending") return sortByRecent(bucket.pending);
     if (tab === "cooking") return sortByRecent(bucket.cooking);
     if (tab === "finished_cooking") return sortByRecent(bucket.finished_cooking);
+    if (tab === "driver_assigned") return sortByRecent(bucket.driver_assigned);
     return sorted;
   }, [bucket, tab]);
 
@@ -430,10 +438,21 @@ export default function KitchenDashboardPage() {
                         {status === "finished_cooking" && (
                           <button
                             type="button"
-                            disabled
-                            className="inline-flex min-h-[48px] min-w-[170px] cursor-default items-center justify-center rounded-2xl border border-[hsl(214_24%_88%)] bg-[hsl(214_32%_96%)] px-5 text-sm font-medium text-[hsl(215_16%_42%)]"
+                            disabled={busy}
+                            onClick={() => onAdvance(order.id, "out_for_delivery")}
+                            className="inline-flex min-h-[48px] min-w-[170px] items-center justify-center rounded-2xl bg-[hsl(217_91%_48%)] px-5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(37,57,108,0.22)] transition hover:bg-[hsl(217_91%_60%)] disabled:opacity-50"
                           >
-                            Awaiting pickup
+                            Mark Picked Up
+                          </button>
+                        )}
+
+                        {status === "out_for_delivery" && (
+                          <button
+                            type="button"
+                            disabled
+                            className="inline-flex min-h-[48px] min-w-[170px] cursor-default items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-50 px-5 text-sm font-medium text-emerald-700"
+                          >
+                            Picked Up
                           </button>
                         )}
                       </div>

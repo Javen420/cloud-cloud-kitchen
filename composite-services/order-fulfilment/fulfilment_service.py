@@ -156,14 +156,18 @@ def _normalize_order_for_ui(raw: dict) -> dict:
 
     # OutSystems style
     status = (raw.get("KitchenAssignStatus") or "pending").lower()
+    
+    # Map OutSystems status to UI display status
+    # Note: OrderUI expects: confirmed, preparing, out_for_delivery, delivered
     status_map = {
         "pending": "confirmed",
         "cooking": "preparing",
-        "finished_cooking": "preparing",
-        "driver_assigned": "out_for_delivery",
-        "out_for_delivery": "out_for_delivery",
+        "finished_cooking": "preparing",  # Ready for pickup, but still "preparing" phase for UI
+        "driver_assigned": "preparing",  # Driver assigned, kitchen may still be cooking
+        "out_for_delivery": "out_for_delivery",  # Driver picked up order, now in transit
         "delivered": "delivered",
     }
+    
     out = {
         "order_id": str(raw.get("OrderId", "")),
         "status": status_map.get(status, "confirmed"),
