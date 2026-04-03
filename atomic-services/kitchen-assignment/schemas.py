@@ -5,6 +5,8 @@ from typing import Optional
 class AssignKitchenRequest(BaseModel):
     order_id: str | None = None
     delivery_address: str | None = None
+    lat: float | None = None
+    lng: float | None = None
 
 
 class AddKitchenRequest(BaseModel):

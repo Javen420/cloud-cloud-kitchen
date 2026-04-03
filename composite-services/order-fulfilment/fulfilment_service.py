@@ -351,6 +351,8 @@ async def submit_order(
             "Items": json.dumps(items),
             "TotalPrice": total_cents,
             "DeliveryAddress": dropoff_address,
+            "CLat": dropoff_lat,
+            "CLong": dropoff_lng,
             "PaymentId": payment_data.get("payment_id", ""),
         }
         order_resp = await _request_first_success(

@@ -1,10 +1,5 @@
-import os
-import requests
-from dataclasses import dataclass
 from typing import List, Tuple
 
-GOOGLE_MAPS_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY", "")
-GEOCODING_URL       = "https://maps.googleapis.com/maps/api/geocode/json"
 from haversine import distance_km, estimate_duration_seconds, distance_result
 
 
@@ -15,16 +10,11 @@ class MapsClientError(Exception):
 
 class MapsClient:
     """
-    Thin, atomic wrapper around the Google Maps Distance Matrix API.
+    Thin wrapper around haversine-based distance calculations.
     """
 
-    def __init__(self, api_key: str = GOOGLE_MAPS_API_KEY):
-        if not api_key:
-            raise MapsClientError(
-                "GOOGLE_MAPS_API_KEY is not set. "
-                "Export it as an environment variable before starting the service."
-            )
-        self._api_key = api_key
+    def __init__(self):
+        pass
 
     def distance_matrix(
         self,
@@ -54,40 +44,6 @@ class MapsClient:
                 })
         return results
 
-    def geocode(self, address: str) -> Tuple[float, float]:
-        """
-        Convert a human-readable address string into (lat, lng) coordinates.
-
-        Args:
-            address: e.g. "123 Orchard Rd, Singapore 238858"
-
-        Returns:
-            (lat, lng) float tuple of the best-match result.
-
-        Raises:
-            MapsClientError: if the address cannot be resolved.
-        """
-        params = {"address": address, "key": self._api_key}
-
-        try:
-            resp = requests.get(GEOCODING_URL, params=params, timeout=10)
-            resp.raise_for_status()
-        except requests.RequestException as exc:
-            raise MapsClientError(f"HTTP request to Geocoding API failed: {exc}") from exc
-
-        body = resp.json()
-        status = body.get("status", "")
-
-        if status == "ZERO_RESULTS":
-            raise MapsClientError(f"Geocoding returned no results for address: '{address}'")
-        if status != "OK":
-            raise MapsClientError(
-                f"Geocoding API error: {status} — {body.get('error_message', '')}"
-            )
-
-        location = body["results"][0]["geometry"]["location"]
-        return location["lat"], location["lng"]
-
     def nearest(
         self,
         origin: Tuple[float, float],
@@ -104,22 +60,3 @@ class MapsClient:
         best = min(reachable, key=lambda r: r['distance_meters'])
         return best['destination_index'], best
 
-    def nearest_from_address(
-        self,
-        address: str,
-        destinations: List[Tuple[float, float]],
-        mode: str = "driving",
-    ) -> Tuple[int, dict]:
-        """
-        Geocodes address → haversine nearest kitchen.
-        Returns (index, result_dict) with distance_meters, duration_seconds,
-        customer_lat, customer_lng (geocoded drop-off used for routing).
-        """
-        origin = self.geocode(address)
-        best_idx, result = self.nearest(origin, destinations, mode)
-        merged = {
-            **result,
-            "customer_lat": origin[0],
-            "customer_lng": origin[1],
-        }
-        return best_idx, merged

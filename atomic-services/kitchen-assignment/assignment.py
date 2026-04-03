@@ -6,19 +6,23 @@ def assign_kitchen_to_order(
     db: Client,
     order_id: str | None = None,
     delivery_address: str | None = None,
+    lat: float | None = None,
+    lng: float | None = None,
 ) -> tuple[dict, int]:
     order = {}
 
-    if not delivery_address and order_id:
+    if not (delivery_address and lat is not None and lng is not None) and order_id:
         order_result = db.table("orders").select("*").eq("id", order_id).execute()
         if not order_result.data:
             return {"error": "Order not found."}, 404
         order = order_result.data[0]
-        delivery_address = order.get("delivery_address")
+        delivery_address = delivery_address or order.get("delivery_address")
+        lat = lat or order.get("dropoff_lat") or order.get("lat")
+        lng = lng or order.get("dropoff_lng") or order.get("lng")
 
-    if not delivery_address:
+    if lat is None or lng is None:
         return {
-            "error": "Order is missing a delivery_address. Cannot perform assignment."
+            "error": "Order is missing coordinates. Cannot perform assignment."
         }, 422
 
     kitchen_result = (
@@ -35,8 +39,8 @@ def assign_kitchen_to_order(
     try:
         maps = MapsClient()
         destinations = [(k["lat"], k["lng"]) for k in kitchens]
-        best_idx, distance_result = maps.nearest_from_address(
-            address=delivery_address,
+        best_idx, distance_result = maps.nearest(
+            origin=(lat, lng),
             destinations=destinations,
         )
     except MapsClientError as exc:
@@ -50,8 +54,8 @@ def assign_kitchen_to_order(
         "total_amount": order.get("total_amount"),
         "items": order.get("items"),
         "delivery_address": delivery_address,
-        "customer_lat": distance_result["customer_lat"],
-        "customer_lng": distance_result["customer_lng"],
+        "customer_lat": lat,
+        "customer_lng": lng,
         "kitchen_id": nearest_kitchen["id"],
         "kitchen_name": nearest_kitchen["name"],
         "kitchen_address": nearest_kitchen["address"],

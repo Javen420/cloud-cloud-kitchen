@@ -15,6 +15,20 @@ export async function submitOrder(orderData) {
   return res.json();
 }
 
+export async function verifyAddress(address) {
+  const res = await fetch(`${BASE_URL}/api/v1/verify?address=${encodeURIComponent(address)}`, {
+    method: "GET",
+    headers: { "Content-Type": "application/json" },
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Address verification failed");
+  }
+
+  return res.json();
+}
+
 export async function getOrderStatus(orderId) {
   const res = await fetch(`${BASE_URL}/api/v1/order/${orderId}`);
 

@@ -48,6 +48,8 @@ def _normalize_outsystems_order(raw: dict) -> dict:
         "kitchen_address": raw.get("KitchenAddress") or "",
         "customer_id": raw.get("CustId", ""),
         "total_amount": int(raw.get("TotalPrice", 0) or 0),
+        "lat": raw.get("CLat"),
+        "lng": raw.get("CLong"),
     }
 
 
@@ -98,6 +100,8 @@ async def poll_and_assign():
                         json={
                             "order_id": order_id,
                             "delivery_address": delivery_address,
+                            "lat": order.get("lat"),
+                            "lng": order.get("lng"),
                         },
                     ) as assign_resp:
                         assign_body = await assign_resp.json()
@@ -126,41 +130,6 @@ async def poll_and_assign():
                                 kitchen_body.get("error")
                                 or kitchen_body.get("Message")
                                 or "Failed to update kitchen assignment"
-                            )
-
-                    order_id_val = raw.get("OrderId", order_id)
-                    if isinstance(order_id_val, str) and order_id_val.isdigit():
-                        order_id_val = int(order_id_val)
-
-                    full_order_payload = {
-                        "CustId": str(raw.get("CustId") or ""),
-                        "DeliveryAddress": str(raw.get("DeliveryAddress") or delivery_address),
-                        "TotalPrice": int(raw.get("TotalPrice") or 0),
-                        "Items": _items_as_outsystems_string(raw.get("Items")),
-                        "PaymentId": str(raw.get("PaymentId") or ""),
-                        "CLat": str(assign_body.get("customer_lat", "")),
-                        "CLong": str(assign_body.get("customer_lng", "")),
-                        "KitchenAssignStatus": "pending",
-                        "OrderId": order_id_val,
-                        "KitchenId": str(assign_body["kitchen_id"]),
-                        "KitchenLong": str(assign_body.get("kitchen_lng", "")),
-                        "KitchenLat": str(assign_body.get("kitchen_lat", "")),
-                        "KitchenAddress": str(assign_body["kitchen_address"]),
-                    }
-
-                    async with session.put(
-                        f"{SANITIZED_NEW_ORDERS_URL}/UpdateFullOrder",
-                        json=full_order_payload,
-                    ) as full_resp:
-                        if full_resp.status != 200:
-                            try:
-                                full_body = await full_resp.json()
-                            except Exception:
-                                full_body = {"error": await full_resp.text()}
-                            raise RuntimeError(
-                                full_body.get("error")
-                                or full_body.get("Message")
-                                or "Failed to update full order (CLat/CLong)"
                             )
 
                     await channel.default_exchange.publish(

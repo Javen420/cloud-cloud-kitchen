@@ -39,6 +39,8 @@ def assign_kitchen(
         db=db,
         order_id=payload.order_id,
         delivery_address=payload.delivery_address,
+        lat=payload.lat,
+        lng=payload.lng,
     )
     return JSONResponse(content=response, status_code=status_code)
 

@@ -46,6 +46,22 @@ services:
     restart: unless-stopped
 
 #Scenario 1
+  verify-address:
+    build:
+      context: ..
+      dockerfile: atomic-services/verify-address/Dockerfile
+    env_file: ../.env
+    environment:
+      PORT: "8084"
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    ports:
+      - "8084:8084"
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+
   payment:
     build:
       context: ..
@@ -162,7 +178,6 @@ services:
     env_file: ../.env
     environment:
       PORT: "8088"
-      GOOGLE_ROUTES_API_KEY: ${GOOGLE_ROUTES_API_KEY}
     ports:
       - "8088:8088"
     restart: unless-stopped
@@ -270,3 +285,4 @@ services:
     ports:
       - "5175:5175"
     restart: unless-stopped
+

@@ -6,7 +6,7 @@ import { loadStripe } from "@stripe/stripe-js";
 import { MapPin, Phone, User, CheckCircle2, Loader2, CreditCard, Lock, ArrowLeft } from "lucide-react";
 import { Navbar } from "@/components/layout/Navbar";
 import { useCartStore } from "@/store/cartStore";
-import { submitOrder } from "@/api/orderService";
+import { submitOrder, verifyAddress } from "@/api/orderService";
 import { createPaymentIntent } from "@/api/paymentService";
 
 /** Keep in sync with composite `DELIVERY_FEE_CENTS` (default 499 = $4.99). */
@@ -98,6 +98,11 @@ export default function CustomerCheckout() {
     setIsPending(true);
     setError(null);
     try {
+      // Step 1: Verify Address and get Coordinates
+      const geo = await verifyAddress(formData.address);
+      const { lat, lng } = geo;
+
+      // Step 2: Handle Stripe Payment
       const { stripe, elements } = stripeCtx;
       if (!stripe || !elements || !clientSecret) {
         throw new Error("Payment form is still loading. Please try again.");
@@ -116,6 +121,7 @@ export default function CustomerCheckout() {
         throw new Error("Payment not completed yet. Please try again.");
       }
 
+      // Step 3: Submit Order with Coordinates
       const data = await submitOrder({
         customer_id: formData.phone || formData.name || "customer",
         items: cartItems.map((item) => ({
@@ -125,6 +131,8 @@ export default function CustomerCheckout() {
           price: item.price,
         })),
         dropoff_address: formData.address,
+        dropoff_lat: lat,
+        dropoff_lng: lng,
         idempotency_key: intentIdempotencyKey || crypto.randomUUID(),
         payment_intent_id: paymentIntent.id || paymentIntentId,
       });
