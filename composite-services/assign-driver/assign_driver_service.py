@@ -138,7 +138,7 @@ async def get_available_orders(
     ready_orders = [
         order
         for order in orders
-        if order["status"] == "finished_cooking"
+        if order["status"] in ("cooking", "finished_cooking")
         and order["kitchen_id"]
         and order["has_real_coordinates"]
     ]
@@ -195,7 +195,7 @@ async def assign_driver(
     if not current_order:
         return {"error": "Order not found."}, 404
 
-    if current_order["status"] != "finished_cooking":
+    if current_order["status"] not in ("cooking", "finished_cooking"):
         return {
             "error": "Order is no longer available for driver assignment.",
             "status": current_order["status"],
@@ -225,12 +225,17 @@ async def assign_driver(
     if eta_resp.status_code != 200:
         return {"error": "Failed to register dropoff for ETA tracking."}, 502
 
+    # Only update status to driver_assigned if kitchen has finished cooking
+    # If kitchen is still cooking, keep the cooking status so order stays visible in kitchen UI
+    kitchen_status = current_order.get("status", "").lower()
+    new_status = "driver_assigned" if kitchen_status == "finished_cooking" else kitchen_status
+    
     update_payload = {
         "KitchenId": str(current_order.get("kitchen_id") or ""),
         "KitchenLong": str(current_order.get("kitchen_lng") or ""),
         "KitchenLat": str(current_order.get("kitchen_lat") or ""),
         "KitchenAddress": current_order.get("kitchen_address") or "",
-        "KitchenAssignStatus": "driver_assigned",
+        "KitchenAssignStatus": new_status,
     }
 
     status_resp = await http.patch(
@@ -265,6 +270,62 @@ async def assign_driver(
     }, 200
 
 
+async def mark_order_picked_up(
+    order_id: str,
+    driver_id: str | None = None,
+) -> tuple[dict, int]:
+    current_order = await _get_order(order_id)
+    if not current_order:
+        return {"error": "Order not found."}, 404
+
+    if current_order["status"] not in {"driver_assigned", "out_for_delivery"}:
+        return {
+            "error": "Order is not ready for pickup.",
+            "status": current_order["status"],
+        }, 409
+
+    if current_order["status"] == "out_for_delivery":
+        return {
+            "order_id": order_id,
+            "driver_id": driver_id,
+            "status": "out_for_delivery",
+        }, 200
+
+    update_payload = {
+        "KitchenId": str(current_order.get("kitchen_id") or ""),
+        "KitchenLong": str(current_order.get("kitchen_lng") or ""),
+        "KitchenLat": str(current_order.get("kitchen_lat") or ""),
+        "KitchenAddress": current_order.get("kitchen_address") or "",
+        "KitchenAssignStatus": "out_for_delivery",
+    }
+
+    status_resp = await http.patch(
+        f"{SANITIZED_NEW_ORDERS_URL}/UpdateKitchenStatus",
+        params={"OrderId": order_id},
+        json=update_payload,
+    )
+    if status_resp.status_code != 200:
+        return {"error": "Failed to update pickup status."}, 502
+
+    await publisher.publish(
+        "order.picked_up",
+        {
+            "order_id": order_id,
+            "driver_id": driver_id or "",
+            "customer_id": current_order["user_id"],
+            "status": "out_for_delivery",
+            "pickup_address": current_order["kitchen_address"],
+            "message": "Your order is on its way.",
+        },
+    )
+
+    return {
+        "order_id": order_id,
+        "driver_id": driver_id,
+        "status": "out_for_delivery",
+    }, 200
+
+
 async def mark_order_delivered(
     order_id: str,
     driver_id: str | None = None,
@@ -273,7 +334,7 @@ async def mark_order_delivered(
     if not current_order:
         return {"error": "Order not found."}, 404
 
-    if current_order["status"] not in {"driver_assigned", "out_for_delivery", "delivered"}:
+    if current_order["status"] not in {"out_for_delivery", "delivered"}:
         return {
             "error": "Order is not currently out for delivery.",
             "status": current_order["status"],

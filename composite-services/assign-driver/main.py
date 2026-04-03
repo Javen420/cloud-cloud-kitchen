@@ -10,6 +10,7 @@ from assign_driver_service import (
     publisher,
     get_available_orders,
     assign_driver,
+    mark_order_picked_up,
     mark_order_delivered,
 )
 from schemas import AssignDriverRequest, DeliverOrderRequest
@@ -55,6 +56,15 @@ async def assign(payload: AssignDriverRequest):
         driver_lng=payload.driver_lng,
         dropoff_lat=payload.dropoff_lat,
         dropoff_lng=payload.dropoff_lng,
+    )
+    return JSONResponse(content=response, status_code=status_code)
+
+
+@app.put("/api/v1/driver/pickup")
+async def pickup(payload: DeliverOrderRequest):
+    response, status_code = await mark_order_picked_up(
+        order_id=payload.order_id,
+        driver_id=payload.driver_id,
     )
     return JSONResponse(content=response, status_code=status_code)
 

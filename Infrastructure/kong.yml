@@ -48,7 +48,7 @@ services:
   # Kitchen UI talks to order-processor through Kong at /api/v1/kitchen/*.
 
 - name: kitchen-coordinate
-  url: http://coordinate-fulfilment:8094
+  url: http://order-processor:8094
   routes:
     - name: kitchen-coordinate-routes
       paths:
@@ -57,7 +57,7 @@ services:
       strip_path: false
 
 - name: kitchen-operations-health
-  url: http://assign-kitchen:8093
+  url: http://kitchen-operations:8093
   routes:
     - name: kitchen-operations-health-routes
       paths:
@@ -73,6 +73,7 @@ services:
     - name: assign-driver-routes
       paths:
         - /api/v1/driver/assign
+        - /api/v1/driver/pickup
         - /api/v1/driver/deliver
         - /api/v1/driver/orders
       methods: ["GET", "PUT", "OPTIONS"]

@@ -5,6 +5,7 @@ import ProgressStepper from "../components/rider/ProgressStepper";
 import DetailRow from "../components/rider/DetailRow";
 import RoutePanel from "../components/rider/RoutePanel";
 import { getEtaTracking } from "../services/etaTrackingApi";
+import { markPickedUp } from "../services/riderApi";
 import { getDriverId, getCurrentPosition } from "../lib/driverSession";
 
 export default function PickupPage() {
@@ -18,6 +19,8 @@ export default function PickupPage() {
   const [loadingEta, setLoadingEta] = useState(true);
   const [etaError, setEtaError] = useState(null);
   const [driverCoords, setDriverCoords] = useState(null);
+  const [pickingUp, setPickingUp] = useState(false);
+  const [pickupError, setPickupError] = useState(null);
 
   useEffect(() => {
     async function loadEta() {
@@ -38,6 +41,22 @@ export default function PickupPage() {
 
     loadEta();
   }, [id]);
+
+  async function handlePickupComplete() {
+    setPickingUp(true);
+    setPickupError(null);
+    try {
+      await markPickedUp({
+        orderId: order.id,
+        driverId: getDriverId(),
+      });
+      navigate(`/rider/delivery/${order.id}`, { state: { order } });
+    } catch (err) {
+      setPickupError(err.message);
+    } finally {
+      setPickingUp(false);
+    }
+  }
 
   if (!order) {
     return (
@@ -75,18 +94,26 @@ export default function PickupPage() {
           <DetailRow label="Order Code" value={order.orderCode} />
           <DetailRow label="Instruction" value={order.pickupInstruction} />
 
+          {pickupError && (
+            <p style={{ color: "red", fontSize: "0.85rem" }}>
+              Pickup error: {pickupError}
+            </p>
+          )}
+
           <div className="action-row">
             <button
               className="secondary-btn"
               onClick={() => navigate(`/rider/order/${order.id}`, { state: { order } })}
+              disabled={pickingUp}
             >
               Back
             </button>
             <button
               className="primary-btn"
-              onClick={() => navigate(`/rider/delivery/${order.id}`, { state: { order } })}
+              onClick={handlePickupComplete}
+              disabled={pickingUp}
             >
-              Confirm Picked Up
+              {pickingUp ? "Updating..." : "Confirm Picked Up"}
             </button>
           </div>
         </section>

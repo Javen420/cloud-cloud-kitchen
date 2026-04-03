@@ -133,7 +133,7 @@ services:
     ports:
       - "8091:8091"
 
-  assign-kitchen:
+  kitchen-operations:
     build:
       context: ..
       dockerfile: ../composite-services/kitchen-operations/Dockerfile
@@ -154,7 +154,7 @@ services:
       new-orders:
         condition: service_started
 
-  coordinate-fulfilment:
+  order-processor:
     build:
       context: ..
       dockerfile: ../composite-services/order-processor/Dockerfile
@@ -267,7 +267,7 @@ services:
     ports:
       - "5174:5174"
     depends_on:
-      coordinate-fulfilment:
+      order-processor:
         condition: service_started
     restart: unless-stopped
 

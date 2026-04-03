@@ -108,6 +108,28 @@ export async function assignDriver({ orderId, driverId, driverLat, driverLng, dr
   return resp.json();
 }
 
+export async function markPickedUp({ orderId, driverId }) {
+  const resp = await fetch(`${BASE_URL}/api/v1/driver/pickup`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      order_id: orderId,
+      driver_id: driverId,
+    }),
+  });
+
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    const msg =
+      err.error ||
+      (typeof err.detail === "string" ? err.detail : err.detail?.message) ||
+      `Pickup confirmation failed (${resp.status})`;
+    throw new Error(msg);
+  }
+
+  return resp.json();
+}
+
 export async function markDelivered({ orderId, driverId }) {
   const resp = await fetch(`${BASE_URL}/api/v1/driver/deliver`, {
     method: "PUT",
