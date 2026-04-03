@@ -31,12 +31,28 @@ def get_cached_geocode(address: str) -> dict | None:
     return None
 
 
-def cache_geocode(address: str, geo_data: dict) -> None:
-    """Store geocode result in Redis."""
+def get_cached_geocode_by_formatted(formatted_address: str) -> dict | None:
+    """Retrieve cached geocode result by formatted address."""
+    if not redis_client:
+        return None
+    
+    cache_key = f"geocode:{formatted_address.lower().strip()}"
+    try:
+        cached_data = redis_client.get(cache_key)
+        if cached_data:
+            return json.loads(cached_data)
+    except Exception as e:
+        print(f"Redis get error: {e}")
+    
+    return None
+
+
+def cache_geocode(formatted_address: str, geo_data: dict) -> None:
+    """Store geocode result in Redis using formatted address as key."""
     if not redis_client:
         return
     
-    cache_key = f"geocode:{address.lower().strip()}"
+    cache_key = f"geocode:{formatted_address.lower().strip()}"
     try:
         redis_client.setex(cache_key, CACHE_TTL, json.dumps(geo_data))
     except Exception as e:

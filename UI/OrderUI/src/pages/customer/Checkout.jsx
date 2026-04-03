@@ -100,7 +100,7 @@ export default function CustomerCheckout() {
     try {
       // Step 1: Verify Address and get Coordinates
       const geo = await verifyAddress(formData.address);
-      const { lat, lng } = geo;
+      const { lat, lng, formatted_address } = geo;
 
       // Step 2: Handle Stripe Payment
       const { stripe, elements } = stripeCtx;
@@ -121,7 +121,7 @@ export default function CustomerCheckout() {
         throw new Error("Payment not completed yet. Please try again.");
       }
 
-      // Step 3: Submit Order with Coordinates
+      // Step 3: Submit Order with Formatted Address and Coordinates
       const data = await submitOrder({
         customer_id: formData.phone || formData.name || "customer",
         items: cartItems.map((item) => ({
@@ -130,7 +130,7 @@ export default function CustomerCheckout() {
           quantity: item.cartQuantity,
           price: item.price,
         })),
-        dropoff_address: formData.address,
+        dropoff_address: formatted_address,
         dropoff_lat: lat,
         dropoff_lng: lng,
         idempotency_key: intentIdempotencyKey || crypto.randomUUID(),

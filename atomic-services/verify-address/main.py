@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Query
 from schemas import GeocodeResponse, HealthResponse
 from geocoding import geocode_address
-from cache import get_cached_geocode, cache_geocode, is_redis_healthy
+from cache import get_cached_geocode, get_cached_geocode_by_formatted, cache_geocode, is_redis_healthy
 
 app = FastAPI(title="Verify Address Service")
 
@@ -12,9 +12,9 @@ async def verify_address(address: str = Query(..., description="The address to v
     Verify and geocode an address in Singapore.
     
     Returns coordinates (lat, lng) and formatted address.
-    Caches results for 24 hours.
+    Caches results for 24 hours using formatted address as key.
     """
-    # Try cache first
+    # Try cache first with user input
     cached_data = get_cached_geocode(address)
     if cached_data:
         return GeocodeResponse(
@@ -28,8 +28,8 @@ async def verify_address(address: str = Query(..., description="The address to v
     # Call Google Maps API
     geo_data = geocode_address(address)
     
-    # Cache the result
-    cache_geocode(address, geo_data)
+    # Cache using formatted address as key
+    cache_geocode(geo_data["formatted_address"], geo_data)
     
     return GeocodeResponse(
         address=address,
