@@ -46,6 +46,22 @@ services:
     restart: unless-stopped
 
 #Scenario 1
+  verify-address:
+    build:
+      context: ..
+      dockerfile: atomic-services/verify-address/Dockerfile
+    env_file: ../.env
+    environment:
+      PORT: "8084"
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    ports:
+      - "8084:8084"
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+
   payment:
     build:
       context: ..
@@ -270,17 +286,3 @@ services:
       - "5175:5175"
     restart: unless-stopped
 
-  verify-address:
-    build:
-      context: ..
-      dockerfile: atomic-services/verify-address/Dockerfile
-    env_file: ../.env
-    environment:
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-    ports:
-      - "8003:8000"
-    restart: unless-stopped
-    depends_on:
-      redis:
-        condition: service_healthy

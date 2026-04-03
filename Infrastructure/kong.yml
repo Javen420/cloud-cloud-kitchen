@@ -26,7 +26,7 @@ services:
       strip_path: false
 
 - name: verify-address
-  url: http://verify-address:8000
+  url: http://verify-address:8084
   routes:
     - name: verify-address-routes
       paths:
