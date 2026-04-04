@@ -1,7 +1,5 @@
-// Injected from repo root `.env` `OUTSYSTEMS_MENU_URL` via vite.config.js; fallback for local dev.
-const BASE_URL =
-  import.meta.env.OUTSYSTEMS_MENU_URL ||
-  "https://personal-dkkhoptv.outsystemscloud.com/MenuService/rest/MenuService/Menu";
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
+const MENU_URL = `${BASE_URL}/api/v1/menu`;
 
 function normalizeMenuItem(raw) {
   // OutSystems commonly returns PascalCase keys like Id/Name/price.
@@ -30,7 +28,7 @@ function normalizeMenuItem(raw) {
 }
 
 export async function getMenu() {
-  const res = await fetch(`${BASE_URL}`);
+  const res = await fetch(MENU_URL);
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail || err.error || "Failed to load menu");

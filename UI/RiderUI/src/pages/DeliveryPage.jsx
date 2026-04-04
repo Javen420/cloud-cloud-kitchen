@@ -1,25 +1,50 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import RiderLayout from "../components/rider/RiderLayout";
 import ProgressStepper from "../components/rider/ProgressStepper";
 import DetailRow from "../components/rider/DetailRow";
 import RoutePanel from "../components/rider/RoutePanel";
 import { getEtaTracking } from "../services/etaTrackingApi";
-import { markDelivered } from "../services/riderApi";
-import { getDriverId, getCurrentPosition } from "../lib/driverSession";
+import { getCurrentDriverOrders, markDelivered } from "../services/riderApi";
+import { clearActiveOrder, getActiveOrder, getDriverId, getCurrentPosition, saveActiveOrder } from "../lib/driverSession";
 
 export default function DeliveryPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
 
-  const order = location.state?.order;
+  const fallbackOrder = useMemo(() => {
+    const active = getActiveOrder()?.order;
+    return active?.id === id ? active : null;
+  }, [id]);
+  const [serverOrder, setServerOrder] = useState(null);
+  const order = location.state?.order || fallbackOrder || serverOrder;
 
   const [etaData, setEtaData] = useState(null);
   const [loadingEta, setLoadingEta] = useState(true);
   const [etaError, setEtaError] = useState(null);
   const [completing, setCompleting] = useState(false);
   const [completeError, setCompleteError] = useState(null);
+
+  useEffect(() => {
+    if (order) return;
+    async function loadCurrentOrder() {
+      try {
+        const currentOrders = await getCurrentDriverOrders(getDriverId());
+        const match = currentOrders.find((currentOrder) => currentOrder.id === id) || null;
+        setServerOrder(match);
+      } catch {
+        setServerOrder(null);
+      }
+    }
+    loadCurrentOrder();
+  }, [id, order]);
+
+  useEffect(() => {
+    if (order) {
+      saveActiveOrder(order, "delivery");
+    }
+  }, [order]);
 
   useEffect(() => {
     async function loadEta() {
@@ -70,6 +95,7 @@ export default function DeliveryPage() {
         orderId: order.id,
         driverId: getDriverId(),
       });
+      clearActiveOrder();
       navigate(`/rider/completed/${order.id}`, { state: { order } });
     } catch (err) {
       setCompleteError(err.message);

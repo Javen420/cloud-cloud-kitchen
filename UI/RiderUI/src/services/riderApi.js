@@ -1,4 +1,4 @@
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
 
 /**
  * Haversine distance (km) between two lat/lng points.
@@ -150,4 +150,15 @@ export async function markDelivered({ orderId, driverId }) {
   }
 
   return resp.json();
+}
+
+export async function getCurrentDriverOrders(driverId) {
+  const params = new URLSearchParams({ driver_id: driverId });
+  const resp = await fetch(`${BASE_URL}/api/v1/driver/current?${params.toString()}`);
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.error || `Failed to load current jobs (${resp.status})`);
+  }
+  const data = await resp.json();
+  return (data.orders || []).map(normalizeOrder);
 }

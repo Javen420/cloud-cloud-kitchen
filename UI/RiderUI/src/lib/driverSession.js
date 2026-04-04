@@ -1,18 +1,41 @@
-/**
- * Generates and persists a driver ID for this browser session.
- * In a real app this would come from authentication.
- */
-function generateId() {
-  return "driver-" + Math.random().toString(36).slice(2, 10);
-}
+import { getCurrentRiderId } from "./riderAuth";
+
+const ACTIVE_ORDER_KEY = "rider_active_order";
 
 export function getDriverId() {
-  let id = localStorage.getItem("rider_driver_id");
-  if (!id) {
-    id = generateId();
-    localStorage.setItem("rider_driver_id", id);
+  return getCurrentRiderId();
+}
+
+export function saveActiveOrder(order, stage = "pickup") {
+  if (!order) return;
+  const driverId = getDriverId();
+  if (!driverId) return;
+  const payload = {
+    driverId,
+    stage,
+    order,
+    savedAt: new Date().toISOString(),
+  };
+  localStorage.setItem(ACTIVE_ORDER_KEY, JSON.stringify(payload));
+}
+
+export function getActiveOrder() {
+  const raw = localStorage.getItem(ACTIVE_ORDER_KEY);
+  if (!raw) return null;
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || parsed.driverId !== getDriverId() || !parsed.order) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
   }
-  return id;
+}
+
+export function clearActiveOrder() {
+  localStorage.removeItem(ACTIVE_ORDER_KEY);
 }
 
 /**

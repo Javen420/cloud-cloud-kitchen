@@ -1,6 +1,8 @@
+import { useEffect } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import RiderLayout from "../components/rider/RiderLayout";
 import ProgressStepper from "../components/rider/ProgressStepper";
+import { clearActiveOrder } from "../lib/driverSession";
 
 export default function CompletedPage() {
   const { id } = useParams();
@@ -8,6 +10,10 @@ export default function CompletedPage() {
   const location = useLocation();
 
   const order = location.state?.order;
+
+  useEffect(() => {
+    clearActiveOrder();
+  }, []);
 
   return (
     <RiderLayout

@@ -14,7 +14,7 @@ NEW_ORDERS_URL = os.getenv(
 RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672/")
 NOTIFICATION_QUEUE = os.getenv("NOTIFICATION_QUEUE", "notifications")
 
-ALLOWED_STATUSES = {"cooking", "finished_cooking", "driver_assigned", "out_for_delivery", "delivered"}
+ALLOWED_STATUSES = {"cooking", "finished_cooking"}
 
 
 def _sanitize_base_url(url: str) -> str:

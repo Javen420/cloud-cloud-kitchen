@@ -9,6 +9,7 @@ from shared.AMQP_Publisher import AMQPPublisher
 from assign_driver_service import (
     publisher,
     get_available_orders,
+    get_current_driver_orders,
     assign_driver,
     mark_order_picked_up,
     mark_order_delivered,
@@ -44,6 +45,12 @@ async def available_orders(
     response, status_code = await get_available_orders(
         rider_lat=rider_lat, rider_lng=rider_lng,
     )
+    return JSONResponse(content=response, status_code=status_code)
+
+
+@app.get("/api/v1/driver/current")
+async def current_driver_orders(driver_id: str = Query(...)):
+    response, status_code = await get_current_driver_orders(driver_id=driver_id)
     return JSONResponse(content=response, status_code=status_code)
 
 

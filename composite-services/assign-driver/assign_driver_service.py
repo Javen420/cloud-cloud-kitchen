@@ -4,6 +4,7 @@ import os
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
+import redis.asyncio as redis
 
 from shared.AMQP_Publisher import AMQPPublisher
 
@@ -13,6 +14,8 @@ NEW_ORDERS_URL = os.getenv(
 )
 ETA_TRACKING_URL = os.getenv("ETA_TRACKING_URL", "http://eta-tracking:8087")
 RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672/")
+REDIS_ADDR = os.getenv("REDIS_ADDR", "redis:6379")
+REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", "")
 
 RIDER_MAX_RADIUS_KM = float(os.getenv("RIDER_MAX_RADIUS_KM", "5.0"))
 RIDER_BASE_FEE = float(os.getenv("RIDER_BASE_FEE", "3.00"))
@@ -21,6 +24,7 @@ RIDER_MIN_PAYOUT = float(os.getenv("RIDER_MIN_PAYOUT", "4.99"))
 
 publisher = AMQPPublisher()
 http = httpx.AsyncClient(timeout=10.0)
+_redis_client = None
 
 
 def _sanitize_base_url(url: str) -> str:
@@ -29,6 +33,20 @@ def _sanitize_base_url(url: str) -> str:
 
 
 SANITIZED_NEW_ORDERS_URL = _sanitize_base_url(NEW_ORDERS_URL)
+ACTIVE_DRIVER_STATUSES = {"cooking", "finished_cooking", "driver_assigned", "out_for_delivery"}
+
+
+def _get_redis() -> redis.Redis:
+    global _redis_client
+    if _redis_client is None:
+        host, port = REDIS_ADDR.split(":")
+        _redis_client = redis.Redis(
+            host=host,
+            port=int(port),
+            password=REDIS_PASSWORD or None,
+            decode_responses=True,
+        )
+    return _redis_client
 
 
 def haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
@@ -103,6 +121,55 @@ def _normalize_outsystems_order(raw: dict) -> dict:
     }
 
 
+def _to_rider_order(order: dict) -> dict:
+    delivery_km = None
+    if order["has_real_coordinates"]:
+        delivery_km = round(
+            haversine_km(
+                order["kitchen_lat"],
+                order["kitchen_lng"],
+                order["dropoff_lat"],
+                order["dropoff_lng"],
+            ),
+            2,
+        )
+
+    return {
+        **order,
+        "pickup_distance_km": order.get("pickup_distance_km"),
+        "delivery_distance_km": delivery_km,
+        "payout": calculate_payout(order.get("pickup_distance_km", 0) or 0, delivery_km or 0),
+    }
+
+
+async def _get_order_assignment(order_id: str) -> str | None:
+    return await _get_redis().get(f"order:driver:{order_id}")
+
+
+async def _set_order_assignment(order_id: str, driver_id: str) -> None:
+    client = _get_redis()
+    pipe = client.pipeline()
+    pipe.set(f"order:driver:{order_id}", driver_id, ex=86400)
+    pipe.sadd(f"driver:orders:{driver_id}", order_id)
+    pipe.expire(f"driver:orders:{driver_id}", 86400)
+    await pipe.execute()
+
+
+async def _clear_order_assignment(order_id: str, driver_id: str | None = None) -> None:
+    client = _get_redis()
+    assigned_driver = driver_id or await client.get(f"order:driver:{order_id}")
+    pipe = client.pipeline()
+    pipe.delete(f"order:driver:{order_id}")
+    if assigned_driver:
+        pipe.srem(f"driver:orders:{assigned_driver}", order_id)
+    await pipe.execute()
+
+
+async def _get_driver_order_ids(driver_id: str) -> list[str]:
+    order_ids = await _get_redis().smembers(f"driver:orders:{driver_id}")
+    return sorted(order_ids) if order_ids else []
+
+
 async def _get_all_orders() -> list[dict]:
     resp = await http.get(f"{SANITIZED_NEW_ORDERS_URL}/GetAll")
     if resp.status_code != 200:
@@ -135,13 +202,15 @@ async def get_available_orders(
     except RuntimeError:
         return {"error": "Failed to fetch available orders."}, 502
 
-    ready_orders = [
-        order
-        for order in orders
-        if order["status"] in ("cooking", "finished_cooking")
-        and order["kitchen_id"]
-        and order["has_real_coordinates"]
-    ]
+    ready_orders = []
+    for order in orders:
+        if order["status"] not in ("cooking", "finished_cooking"):
+            continue
+        if not order["kitchen_id"] or not order["has_real_coordinates"]:
+            continue
+        if await _get_order_assignment(order["id"]):
+            continue
+        ready_orders.append(order)
 
     if rider_lat is not None and rider_lng is not None:
         enriched = []
@@ -158,18 +227,7 @@ async def get_available_orders(
             if pickup_km > RIDER_MAX_RADIUS_KM:
                 continue
 
-            delivery_km = round(
-                haversine_km(
-                    order["kitchen_lat"],
-                    order["kitchen_lng"],
-                    order["dropoff_lat"],
-                    order["dropoff_lng"],
-                ),
-                2,
-            )
             order["pickup_distance_km"] = pickup_km
-            order["delivery_distance_km"] = delivery_km
-            order["payout"] = calculate_payout(pickup_km, delivery_km)
             enriched.append(order)
 
         ready_orders = enriched
@@ -180,7 +238,44 @@ async def get_available_orders(
             -int(order["id"]) if order["id"].isdigit() else 0,
         )
     )
-    return {"orders": ready_orders}, 200
+    return {"orders": [_to_rider_order(order) for order in ready_orders]}, 200
+
+
+async def get_current_driver_orders(driver_id: str) -> tuple[dict, int]:
+    if not driver_id:
+        return {"error": "driver_id is required."}, 400
+
+    order_ids = await _get_driver_order_ids(driver_id)
+    if not order_ids:
+        return {"orders": []}, 200
+
+    active_orders = []
+    stale_order_ids = []
+    for order_id in order_ids:
+        order = await _get_order(order_id)
+        if not order:
+            stale_order_ids.append(order_id)
+            continue
+        if order["status"] not in ACTIVE_DRIVER_STATUSES:
+            stale_order_ids.append(order_id)
+            continue
+        assigned_driver = await _get_order_assignment(order_id)
+        if assigned_driver != driver_id:
+            stale_order_ids.append(order_id)
+            continue
+        active_orders.append(_to_rider_order(order))
+
+    for stale_order_id in stale_order_ids:
+        await _clear_order_assignment(stale_order_id, driver_id)
+
+    status_rank = {
+        "out_for_delivery": 0,
+        "driver_assigned": 1,
+        "finished_cooking": 2,
+        "cooking": 3,
+    }
+    active_orders.sort(key=lambda order: (status_rank.get(order["status"], 99), order["id"]))
+    return {"orders": active_orders}, 200
 
 
 async def assign_driver(
@@ -199,6 +294,13 @@ async def assign_driver(
         return {
             "error": "Order is no longer available for driver assignment.",
             "status": current_order["status"],
+        }, 409
+
+    assigned_driver = await _get_order_assignment(order_id)
+    if assigned_driver and assigned_driver != driver_id:
+        return {
+            "error": "Order is already assigned to another driver.",
+            "assigned_driver_id": assigned_driver,
         }, 409
 
     customer_id = current_order["user_id"]
@@ -246,6 +348,8 @@ async def assign_driver(
     if status_resp.status_code != 200:
         return {"error": "Failed to update order status."}, 502
 
+    await _set_order_assignment(order_id, driver_id)
+
     await publisher.publish(
         "driver.assigned",
         {
@@ -278,11 +382,18 @@ async def mark_order_picked_up(
     if not current_order:
         return {"error": "Order not found."}, 404
 
-    if current_order["status"] not in {"driver_assigned", "out_for_delivery"}:
+    if current_order["status"] not in {"driver_assigned", "finished_cooking", "out_for_delivery"}:
         return {
             "error": "Order is not ready for pickup.",
             "status": current_order["status"],
         }, 409
+
+    assigned_driver = await _get_order_assignment(order_id)
+    if assigned_driver and driver_id and assigned_driver != driver_id:
+        return {
+            "error": "This order is assigned to a different driver.",
+            "assigned_driver_id": assigned_driver,
+        }, 403
 
     if current_order["status"] == "out_for_delivery":
         return {
@@ -340,6 +451,13 @@ async def mark_order_delivered(
             "status": current_order["status"],
         }, 409
 
+    assigned_driver = await _get_order_assignment(order_id)
+    if assigned_driver and driver_id and assigned_driver != driver_id:
+        return {
+            "error": "This order is assigned to a different driver.",
+            "assigned_driver_id": assigned_driver,
+        }, 403
+
     update_payload = {
         "KitchenId": str(current_order.get("kitchen_id") or ""),
         "KitchenLong": str(current_order.get("kitchen_lng") or ""),
@@ -355,6 +473,8 @@ async def mark_order_delivered(
     )
     if status_resp.status_code != 200:
         return {"error": "Failed to update delivered status."}, 502
+
+    await _clear_order_assignment(order_id, assigned_driver or driver_id)
 
     await publisher.publish(
         "order.delivered",

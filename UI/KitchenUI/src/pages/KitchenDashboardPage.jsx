@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChefHat, RefreshCw, Wifi, WifiOff, Clock, Package } from "lucide-react";
+import { ChefHat, RefreshCw, Wifi, WifiOff, Clock, Package, UtensilsCrossed } from "lucide-react";
 import {
   fetchCoordinateHealth,
   fetchOrdersByStatuses,
@@ -102,6 +102,10 @@ function badgeForStatus(status) {
       return "border-emerald-200 bg-emerald-50 text-emerald-700";
     case "finished_cooking":
       return "border-sky-200 bg-sky-50 text-sky-700";
+    case "driver_assigned":
+      return "border-violet-200 bg-violet-50 text-violet-700";
+    case "out_for_delivery":
+      return "border-indigo-200 bg-indigo-50 text-indigo-700";
     default:
       return "border-[hsl(214_24%_88%)] bg-[hsl(214_32%_96%)] text-[hsl(215_16%_42%)]";
   }
@@ -115,6 +119,10 @@ function labelForStatus(status) {
       return "Preparing";
     case "finished_cooking":
       return "Ready";
+    case "driver_assigned":
+      return "Driver assigned";
+    case "out_for_delivery":
+      return "Picked Up";
     default:
       return status;
   }
@@ -175,7 +183,6 @@ export default function KitchenDashboardPage() {
           selectedKitchenId,
         ),
       );
-
       setBucket({
         pending,
         cooking,
@@ -256,9 +263,20 @@ export default function KitchenDashboardPage() {
     <div className="min-h-full bg-[hsl(214_32%_97%)] text-[hsl(222_47%_14%)]">
       <main className="mx-auto max-w-6xl px-6 py-10 sm:px-8 lg:px-10">
         <header className="mb-8">
-          <p className="mb-2 text-sm font-bold uppercase tracking-[0.14em] text-[hsl(217_91%_48%)]">
-            Kitchen UI
-          </p>
+          <div className="mb-3 flex flex-wrap items-center gap-3">
+            <div
+              className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-[hsl(222_47%_22%)] text-white shadow-[0_10px_24px_rgba(37,57,108,0.22)]"
+              aria-hidden="true"
+            >
+              <UtensilsCrossed className="h-[22px] w-[22px]" />
+            </div>
+            <p className="m-0 font-['Outfit'] text-[1.45rem] font-extrabold tracking-[-0.03em] text-[hsl(222_47%_14%)]">
+              Cloud Cloud Kitchen
+            </p>
+            <span className="inline-flex min-h-8 items-center rounded-full border border-[hsl(214_24%_88%)] bg-[linear-gradient(180deg,hsl(214_32%_96%),hsl(214_30%_91%))] px-3.5 text-[0.82rem] font-extrabold uppercase tracking-[0.08em] text-[hsl(215_16%_42%)]">
+              Kitchen
+            </span>
+          </div>
           <h1 className="text-4xl font-bold tracking-tight text-[hsl(222_47%_14%)]">
             Kitchen Orders
           </h1>
@@ -446,11 +464,20 @@ export default function KitchenDashboardPage() {
                         {status === "finished_cooking" && (
                           <button
                             type="button"
-                            disabled={busy}
-                            onClick={() => onAdvance(order.id, "out_for_delivery")}
-                            className="inline-flex min-h-[48px] min-w-[170px] items-center justify-center rounded-2xl bg-[hsl(217_91%_48%)] px-5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(37,57,108,0.22)] transition hover:bg-[hsl(217_91%_60%)] disabled:opacity-50"
+                            disabled
+                            className="inline-flex min-h-[48px] min-w-[170px] cursor-default items-center justify-center rounded-2xl border border-[hsl(214_24%_88%)] bg-[hsl(214_32%_96%)] px-5 text-sm font-medium text-[hsl(215_16%_42%)]"
                           >
-                            Mark Picked Up
+                            Awaiting pickup
+                          </button>
+                        )}
+
+                        {status === "driver_assigned" && (
+                          <button
+                            type="button"
+                            disabled
+                            className="inline-flex min-h-[48px] min-w-[170px] cursor-default items-center justify-center rounded-2xl border border-violet-200 bg-violet-50 px-5 text-sm font-medium text-violet-700"
+                          >
+                            Rider assigned
                           </button>
                         )}
 
@@ -458,7 +485,7 @@ export default function KitchenDashboardPage() {
                           <button
                             type="button"
                             disabled
-                            className="inline-flex min-h-[48px] min-w-[170px] cursor-default items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-50 px-5 text-sm font-medium text-emerald-700"
+                            className="inline-flex min-h-[48px] min-w-[170px] cursor-default items-center justify-center rounded-2xl border border-indigo-200 bg-indigo-50 px-5 text-sm font-medium text-indigo-700"
                           >
                             Picked Up
                           </button>

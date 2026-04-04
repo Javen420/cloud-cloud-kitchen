@@ -19,6 +19,35 @@ def _log(msg: str):
     print(msg, flush=True)
 
 
+def _notification_title(status: str | None) -> str:
+    mapping = {
+        "confirmed": "Order confirmed",
+        "pending": "Order received",
+        "cooking": "Kitchen is preparing your order",
+        "finished_cooking": "Your order is ready for pickup",
+        "driver_assigned": "Driver assigned",
+        "out_for_delivery": "Order on the way",
+        "delivered": "Order delivered",
+    }
+    return mapping.get((status or "").lower(), "Order update")
+
+
+def _notification_body(payload: dict) -> str:
+    if payload.get("message"):
+        return str(payload["message"])
+
+    status = str(payload.get("status", "")).lower()
+    if status == "pending":
+        kitchen_name = payload.get("kitchen_name")
+        if kitchen_name:
+            return f"Your order was assigned to {kitchen_name}."
+    if status == "finished_cooking":
+        return "Your order is ready and waiting for a rider."
+    if status == "eta.calculated" and payload.get("estimated_minutes") is not None:
+        return f"Estimated arrival: {payload['estimated_minutes']} minutes."
+    return "Your order status updated."
+
+
 def _init_firebase():
     if firebase_admin._apps:
         return
@@ -115,9 +144,22 @@ async def _consume_and_forward():
 
                     _init_firebase()
                     topic = f"{PUBLISH_TOPIC_PREFIX}{order_id}"
+                    status = payload.get("status")
+                    title = _notification_title(status)
+                    body = _notification_body(payload)
                     fcm_msg = messaging.Message(
                         topic=topic,
+                        notification=messaging.Notification(title=title, body=body),
                         data={k: str(v) for k, v in payload.items() if v is not None},
+                        webpush=messaging.WebpushConfig(
+                            notification=messaging.WebpushNotification(
+                                title=title,
+                                body=body,
+                            ),
+                            fcm_options=messaging.WebpushFCMOptions(
+                                link=f"/customer/track/{order_id}"
+                            ),
+                        ),
                     )
                     response = messaging.send(fcm_msg)
                     print(f"FCM message sent successfully: {response}")
@@ -201,7 +243,18 @@ def test_send(order_id: str, message: str = "test"):
     """
     _init_firebase()
     topic = f"{PUBLISH_TOPIC_PREFIX}{order_id}"
-    fcm_msg = messaging.Message(topic=topic, data={"kind": "test", "message": message})
+    fcm_msg = messaging.Message(
+        topic=topic,
+        notification=messaging.Notification(title="Order update", body=message),
+        data={"kind": "test", "message": message, "order_id": order_id},
+        webpush=messaging.WebpushConfig(
+            notification=messaging.WebpushNotification(
+                title="Order update",
+                body=message,
+            ),
+            fcm_options=messaging.WebpushFCMOptions(link=f"/customer/track/{order_id}"),
+        ),
+    )
     msg_id = messaging.send(fcm_msg)
     return {"status": "ok", "topic": topic, "message_id": msg_id}
 

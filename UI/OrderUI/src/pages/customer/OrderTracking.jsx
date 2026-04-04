@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useLocation, useParams } from "wouter";
 import { motion } from "framer-motion";
 import { CheckCircle2, Clock, ChefHat, Truck, Loader2, Package } from "lucide-react";
@@ -30,6 +30,8 @@ export default function OrderTracking() {
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [notificationStatus, setNotificationStatus] = useState("checking");
+  const [notificationError, setNotificationError] = useState("");
 
   useEffect(() => {
     let interval;
@@ -52,51 +54,89 @@ export default function OrderTracking() {
     return () => clearInterval(interval);
   }, [orderId]);
 
+  const handleForegroundPayload = useCallback((payload) => {
+    const data = payload?.data || {};
+    if (data.order_id && String(data.order_id) !== String(orderId)) return;
+    const cents =
+      data.total_cents != null
+        ? Number(data.total_cents)
+        : data.total_amount != null
+          ? Number(data.total_amount)
+          : undefined;
+    const etaTotal =
+      data.eta_total_minutes != null ? Number(data.eta_total_minutes) : undefined;
+    const etaTravel =
+      data.eta_travel_minutes != null ? Number(data.eta_travel_minutes) : undefined;
+    const etaCook =
+      data.eta_cooking_minutes != null ? Number(data.eta_cooking_minutes) : undefined;
+    const etaDist =
+      data.eta_distance_km != null ? Number(data.eta_distance_km) : undefined;
+    setOrder((prev) => ({
+      ...(prev || {}),
+      order_id: data.order_id || orderId,
+      status: data.status || prev?.status,
+      dropoff_address:
+        data.dropoff_address || data.delivery_address || prev?.dropoff_address,
+      total_cents: cents !== undefined && !Number.isNaN(cents) ? cents : prev?.total_cents,
+      ...(etaTotal != null && !Number.isNaN(etaTotal) ? { eta_total_minutes: etaTotal } : {}),
+      ...(etaTravel != null && !Number.isNaN(etaTravel) ? { eta_travel_minutes: etaTravel } : {}),
+      ...(etaCook != null && !Number.isNaN(etaCook) ? { eta_cooking_minutes: etaCook } : {}),
+      ...(etaDist != null && !Number.isNaN(etaDist) ? { eta_distance_km: etaDist } : {}),
+    }));
+  }, [orderId]);
+
+  const enableNotifications = useCallback(async (requestPermission = false) => {
+    if (typeof Notification === "undefined") {
+      setNotificationStatus("unsupported");
+      setNotificationError("This browser does not support web notifications.");
+      return () => {};
+    }
+
+    if (Notification.permission === "denied") {
+      setNotificationStatus("denied");
+      setNotificationError("Notifications are blocked in browser site settings.");
+      return () => {};
+    }
+
+    if (Notification.permission === "default" && !requestPermission) {
+      setNotificationStatus("prompt");
+      setNotificationError("");
+      return () => {};
+    }
+
+    try {
+      const token = await getFcmRegistrationToken({ requestPermission });
+      if (!token) {
+        setNotificationStatus(
+          Notification.permission === "granted" ? "error" : "prompt",
+        );
+        if (Notification.permission === "granted") {
+          setNotificationError("Could not get an FCM token for this browser.");
+        }
+        return () => {};
+      }
+
+      await subscribeToOrderTopic({ token, orderId });
+      const unsubscribe = await onForegroundMessage(handleForegroundPayload);
+      setNotificationStatus("enabled");
+      setNotificationError("");
+      return unsubscribe;
+    } catch (err) {
+      setNotificationStatus("error");
+      setNotificationError(err?.message || "Notification setup failed.");
+      return () => {};
+    }
+  }, [handleForegroundPayload, orderId]);
+
   useEffect(() => {
     let unsubscribe = null;
     (async () => {
-      try {
-        const token = await getFcmRegistrationToken();
-        if (!token) return;
-        await subscribeToOrderTopic({ token, orderId });
-        unsubscribe = await onForegroundMessage((payload) => {
-          const data = payload?.data || {};
-          if (data.order_id && String(data.order_id) !== String(orderId)) return;
-          const cents =
-            data.total_cents != null
-              ? Number(data.total_cents)
-              : data.total_amount != null
-                ? Number(data.total_amount)
-                : undefined;
-          const etaTotal =
-            data.eta_total_minutes != null ? Number(data.eta_total_minutes) : undefined;
-          const etaTravel =
-            data.eta_travel_minutes != null ? Number(data.eta_travel_minutes) : undefined;
-          const etaCook =
-            data.eta_cooking_minutes != null ? Number(data.eta_cooking_minutes) : undefined;
-          const etaDist =
-            data.eta_distance_km != null ? Number(data.eta_distance_km) : undefined;
-          setOrder((prev) => ({
-            ...(prev || {}),
-            order_id: data.order_id || orderId,
-            status: data.status || prev?.status,
-            dropoff_address:
-              data.dropoff_address || data.delivery_address || prev?.dropoff_address,
-            total_cents: cents !== undefined && !Number.isNaN(cents) ? cents : prev?.total_cents,
-            ...(etaTotal != null && !Number.isNaN(etaTotal) ? { eta_total_minutes: etaTotal } : {}),
-            ...(etaTravel != null && !Number.isNaN(etaTravel) ? { eta_travel_minutes: etaTravel } : {}),
-            ...(etaCook != null && !Number.isNaN(etaCook) ? { eta_cooking_minutes: etaCook } : {}),
-            ...(etaDist != null && !Number.isNaN(etaDist) ? { eta_distance_km: etaDist } : {}),
-          }));
-        });
-      } catch {
-        // polling fallback
-      }
+      unsubscribe = await enableNotifications(false);
     })();
     return () => {
       if (typeof unsubscribe === "function") unsubscribe();
     };
-  }, [orderId]);
+  }, [enableNotifications]);
 
   const rawStep = order ? STATUS_STEPS.findIndex((s) => s.key === order.status) : -1;
   const currentStepIndex = rawStep < 0 ? -1 : rawStep;

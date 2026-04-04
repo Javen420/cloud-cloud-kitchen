@@ -1,19 +1,24 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import RiderLayout from "../components/rider/RiderLayout";
 import ProgressStepper from "../components/rider/ProgressStepper";
 import DetailRow from "../components/rider/DetailRow";
 import RoutePanel from "../components/rider/RoutePanel";
 import { getEtaTracking } from "../services/etaTrackingApi";
-import { markPickedUp } from "../services/riderApi";
-import { getDriverId, getCurrentPosition } from "../lib/driverSession";
+import { getCurrentDriverOrders, markPickedUp } from "../services/riderApi";
+import { getActiveOrder, getDriverId, getCurrentPosition, saveActiveOrder } from "../lib/driverSession";
 
 export default function PickupPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
 
-  const order = location.state?.order;
+  const fallbackOrder = useMemo(() => {
+    const active = getActiveOrder()?.order;
+    return active?.id === id ? active : null;
+  }, [id]);
+  const [serverOrder, setServerOrder] = useState(null);
+  const order = location.state?.order || fallbackOrder || serverOrder;
 
   const [etaData, setEtaData] = useState(null);
   const [loadingEta, setLoadingEta] = useState(true);
@@ -21,6 +26,20 @@ export default function PickupPage() {
   const [driverCoords, setDriverCoords] = useState(null);
   const [pickingUp, setPickingUp] = useState(false);
   const [pickupError, setPickupError] = useState(null);
+
+  useEffect(() => {
+    if (order) return;
+    async function loadCurrentOrder() {
+      try {
+        const currentOrders = await getCurrentDriverOrders(getDriverId());
+        const match = currentOrders.find((currentOrder) => currentOrder.id === id) || null;
+        setServerOrder(match);
+      } catch {
+        setServerOrder(null);
+      }
+    }
+    loadCurrentOrder();
+  }, [id, order]);
 
   useEffect(() => {
     async function loadEta() {
@@ -50,6 +69,7 @@ export default function PickupPage() {
         orderId: order.id,
         driverId: getDriverId(),
       });
+      saveActiveOrder(order, "delivery");
       navigate(`/rider/delivery/${order.id}`, { state: { order } });
     } catch (err) {
       setPickupError(err.message);

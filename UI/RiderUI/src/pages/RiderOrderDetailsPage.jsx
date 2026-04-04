@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import RiderLayout from "../components/rider/RiderLayout";
 import DetailRow from "../components/rider/DetailRow";
-import { assignDriver } from "../services/riderApi";
-import { getDriverId, getCurrentPosition } from "../lib/driverSession";
+import { assignDriver, getCurrentDriverOrders } from "../services/riderApi";
+import { getActiveOrder, getDriverId, getCurrentPosition, saveActiveOrder } from "../lib/driverSession";
 
 export default function RiderOrderDetailsPage() {
   const { id } = useParams();
@@ -11,10 +11,32 @@ export default function RiderOrderDetailsPage() {
   const location = useLocation();
 
   // Order is passed via router state from AvailableOrdersPage
-  const order = location.state?.order;
+  const fallbackOrder = useMemo(() => {
+    const active = getActiveOrder()?.order;
+    return active?.id === id ? active : null;
+  }, [id]);
+  const [serverOrder, setServerOrder] = useState(null);
+  const order = location.state?.order || fallbackOrder || serverOrder;
+  const [loadingServerOrder, setLoadingServerOrder] = useState(false);
 
   const [accepting, setAccepting] = useState(false);
   const [acceptError, setAcceptError] = useState(null);
+
+  useEffect(() => {
+    if (order) return;
+    async function loadCurrentOrder() {
+      setLoadingServerOrder(true);
+      try {
+        const currentOrders = await getCurrentDriverOrders(getDriverId());
+        const match = currentOrders.find((currentOrder) => currentOrder.id === id) || null;
+        setServerOrder(match);
+      } finally {
+        setLoadingServerOrder(false);
+      }
+    }
+    loadCurrentOrder();
+  }, [id, order]);
+
   async function handleAccept() {
     setAccepting(true);
     setAcceptError(null);
@@ -30,6 +52,7 @@ export default function RiderOrderDetailsPage() {
         dropoffLat: order.dropoff_lat,
         dropoffLng: order.dropoff_lng,
       });
+      saveActiveOrder(order, "pickup");
 
       // Pass the accepted order to pickup page via state so it's available without re-fetch
       navigate(`/rider/pickup/${id}`, { state: { order } });
@@ -48,6 +71,7 @@ export default function RiderOrderDetailsPage() {
       >
         <div className="card empty-card">
           <p>Order data unavailable. Return to the orders list.</p>
+          {loadingServerOrder ? <p>Loading current jobs...</p> : null}
           <button
             className="primary-btn"
             onClick={() => navigate("/rider/available-orders")}
